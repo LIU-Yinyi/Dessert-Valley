@@ -106,6 +106,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /sizeVariantScale/);
   assert.match(page, /className="language-button"/);
   assert.match(page, /切换到英文/);
+  assert.doesNotMatch(page, /className="avatar"/);
   assert.match(page, /Empty dessert sketch canvas/);
   assert.match(page, /className="agent-window"/);
   assert.match(page, /className="alias-tip"/);
@@ -185,6 +186,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /\.pixel-select-menu/);
   assert.match(css, /\.production-default-spec/);
   assert.match(css, /\.language-button/);
+  assert.doesNotMatch(css, /\.avatar/);
   assert.match(css, /\.alias-tip:hover::after/);
 
   assert.match(layout, /Dessert Valley — Cozy Dessert Atelier/);

@@ -3149,7 +3149,6 @@ export default function Home() {
             <Languages size={16} />
             <span>{language === "en" ? "中文" : "EN"}</span>
           </button>
-          <span className="avatar">D</span>
         </div>
       </header>
 

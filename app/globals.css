@@ -453,20 +453,6 @@ input[type="file"] {
   border-color: var(--berry);
 }
 
-.avatar {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  color: var(--paper-hi);
-  background: var(--plum);
-  border: 3px solid var(--soil-deep);
-  box-shadow: var(--shadow-small);
-  font-family: var(--font-display);
-  font-size: 13px;
-  font-weight: 800;
-}
-
 [data-tip] {
   position: relative;
 }
@@ -3472,11 +3458,6 @@ button.empty-state {
 
   .brand strong {
     font-size: 14px;
-  }
-
-  .avatar {
-    width: 40px;
-    height: 40px;
   }
 
   .top-actions {
