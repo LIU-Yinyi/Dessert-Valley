@@ -734,6 +734,8 @@ input[type="file"] {
 }
 
 .composer-bottom {
+  position: relative;
+  z-index: 3;
   justify-content: space-between;
   gap: 12px;
   margin-top: 12px;
@@ -797,6 +799,10 @@ input[type="file"] {
   transform: translate(-50%, 4px);
   transition: 0.16s ease;
   white-space: nowrap;
+}
+
+.input-tools [data-tip] {
+  z-index: 4;
 }
 
 [data-tip]:hover::after {
