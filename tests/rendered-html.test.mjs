@@ -132,6 +132,22 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /\.handbook-generator/);
   assert.match(css, /\.handbook-sheet/);
   assert.match(css, /\.handbook-candidate-description/);
+  assert.match(
+    css,
+    /\.export-panel,\s*\.handbook-gallery\s*\{\s*padding: 22px;/,
+  );
+  assert.match(
+    css,
+    /\.handbook-card-grid\s*\{[^}]*align-items: stretch;/s,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 1120px\)[\s\S]*?\.diner-layout\s*\{\s*grid-template-columns: 1fr;/,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 620px\)[\s\S]*?\.export-panel,\s*\.handbook-gallery\s*\{\s*padding: 15px;/,
+  );
   assert.match(css, /\.handbook-reference-upload/);
   assert.match(css, /\.idea-card-actions/);
   assert.match(css, /\.idea-tag-preview/);
