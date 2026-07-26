@@ -321,42 +321,6 @@ function loadCanvasImage(source: string): Promise<HTMLImageElement> {
   });
 }
 
-function drawCover(
-  context: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  width: number,
-  height: number
-) {
-  const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
-  const drawWidth = image.naturalWidth * scale;
-  const drawHeight = image.naturalHeight * scale;
-  context.drawImage(
-    image,
-    (width - drawWidth) / 2,
-    (height - drawHeight) / 2,
-    drawWidth,
-    drawHeight
-  );
-}
-
-function drawContain(
-  context: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  width: number,
-  height: number
-) {
-  const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
-  const drawWidth = image.naturalWidth * scale;
-  const drawHeight = image.naturalHeight * scale;
-  context.drawImage(
-    image,
-    (width - drawWidth) / 2,
-    (height - drawHeight) / 2,
-    drawWidth,
-    drawHeight
-  );
-}
-
 function hashText(value: string) {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
@@ -416,126 +380,23 @@ function intentProductId(idea: IdeaCard, references: DesignReference[]): Product
   return ideaVariant(idea);
 }
 
-function intentColor(idea: IdeaCard, references: DesignReference[]) {
-  const intent = [
-    idea.title,
-    idea.tags.join(" "),
-    ...references.map(
-      (reference) => `${reference.title} ${reference.content}`
-    ),
-  ]
-    .join(" ")
-    .toLowerCase();
-  const matches: Array<[RegExp, string]> = [
-    [/blue|sky|ocean|蓝|天空|海/, "#5b9fb5"],
-    [/pink|rose|blush|粉|玫瑰/, "#d78491"],
-    [/red|berry|strawberry|红|莓|草莓/, "#b95049"],
-    [/green|pistachio|moss|绿色|开心果|苔藓/, "#6f914a"],
-    [/purple|plum|violet|紫|李子/, "#765477"],
-    [/gold|amber|honey|金|琥珀|蜂蜜/, "#d3a044"],
-    [/black|charcoal|dark|黑|炭|深色/, "#4b3d42"],
-    [/white|pearl|cream|白|珍珠|奶油/, "#eadfbf"],
-  ];
-  const match = matches.find(([pattern]) => pattern.test(intent));
-  if (match) return match[1];
-  const palette = ["#d3a044", "#78a84b", "#a84e43", "#704a68", "#397c8d"];
-  return palette[Number.parseInt(hashText(intent || "dessert"), 36) % palette.length];
-}
-
-async function composeIntentRendering({
-  idea,
-  references,
-  view,
-}: {
-  idea: IdeaCard;
-  references: DesignReference[];
-  view: ViewStyle;
-}) {
-  const productId = intentProductId(idea, references);
-  const product = products[productId];
-  const source = view === "cutaway" ? product.cutaway : product.image;
-  const baseImage = await loadCanvasImage(source);
+async function normalizeReferenceImage(source: string) {
+  const image = await loadCanvasImage(source);
+  const longestEdge = Math.max(image.naturalWidth, image.naturalHeight);
+  if (!longestEdge) throw new Error("Image has no dimensions");
+  const scale = Math.min(1, 1536 / longestEdge);
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
   const canvas = document.createElement("canvas");
-  canvas.width = 1024;
-  canvas.height = 768;
+  canvas.width = width;
+  canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Canvas unavailable");
-
   context.imageSmoothingEnabled = true;
-  context.fillStyle = "#f4dfa8";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  drawCover(context, baseImage, canvas.width, canvas.height);
-
-  const visualReferences = references.filter(
-    (reference) =>
-      Boolean(reference.asset) &&
-      (reference.kind === "image" || reference.kind === "canvas")
-  );
-  for (const reference of visualReferences.slice(-3)) {
-    try {
-      const referenceImage = await loadCanvasImage(reference.asset);
-      context.save();
-      if (reference.kind === "canvas") {
-        context.globalAlpha = 0.42;
-        context.globalCompositeOperation = "multiply";
-        drawContain(context, referenceImage, canvas.width, canvas.height);
-      } else {
-        context.globalAlpha = 0.18;
-        context.globalCompositeOperation = "soft-light";
-        drawCover(context, referenceImage, canvas.width, canvas.height);
-      }
-      context.restore();
-    } catch {
-      // Keep the remaining intent inputs usable if one local preview cannot load.
-    }
-  }
-
-  const color = intentColor(idea, references);
-  context.save();
-  context.globalAlpha = visualReferences.length ? 0.16 : 0.12;
-  context.globalCompositeOperation = "color";
-  context.fillStyle = color;
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.restore();
-
-  const intentText = [
-    idea.title,
-    idea.tags.join(" "),
-    ...references.map(
-      (reference) => `${reference.title} ${reference.content}`
-    ),
-  ]
-    .join(" ")
-    .toLowerCase();
-  context.save();
-  context.fillStyle = "#f4dfa8";
-  context.globalAlpha = 0.2;
-  if (/square|box|cube|方形|盒|立方/.test(intentText)) {
-    context.fillRect(0, 0, 110, canvas.height);
-    context.fillRect(canvas.width - 110, 0, 110, canvas.height);
-  } else if (/tall|tower|vertical|高|塔|竖/.test(intentText)) {
-    context.fillRect(0, 0, 170, canvas.height);
-    context.fillRect(canvas.width - 170, 0, 170, canvas.height);
-  } else if (/flat|wide|low|扁|宽|低/.test(intentText)) {
-    context.fillRect(0, 0, canvas.width, 95);
-    context.fillRect(0, canvas.height - 95, canvas.width, 95);
-  }
-  context.restore();
-
-  context.fillStyle = color;
-  context.fillRect(0, 0, canvas.width, 10);
-  context.fillRect(0, canvas.height - 10, canvas.width, 10);
-  context.fillRect(0, 0, 10, canvas.height);
-  context.fillRect(canvas.width - 10, 0, 10, canvas.height);
-  [0, 1, 2].forEach((index) => {
-    context.fillStyle = [color, "#f4dfa8", "#4a2f24"][index];
-    context.fillRect(28 + index * 30, canvas.height - 42, 20, 20);
-  });
-
-  return {
-    src: canvas.toDataURL("image/jpeg", 0.9),
-    productId,
-  };
+  context.fillStyle = "#fffdf5";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", 0.9);
 }
 
 function emptyProductDraft(): ProductDraft {
@@ -1468,6 +1329,7 @@ export default function Home() {
     )
   );
   const [dockOpen, setDockOpen] = useState(false);
+  const [ideaMenuOpen, setIdeaMenuOpen] = useState(false);
   const [referenceEditor, setReferenceEditor] = useState<{
     kind: ReferenceKind;
     existing: DesignReference | null;
@@ -1475,6 +1337,7 @@ export default function Home() {
   const [viewStyle, setViewStyle] = useState<ViewStyle>("exterior");
   const [renderingDesignId, setRenderingDesignId] = useState<number | null>(null);
   const [renderResults, setRenderResults] = useState<Record<number, RenderResult | null>>({});
+  const [renderErrors, setRenderErrors] = useState<Record<number, string>>({});
   const [productDrafts, setProductDrafts] = useState<Record<number, ProductDraft>>(
     () =>
       Object.fromEntries(
@@ -1496,11 +1359,13 @@ export default function Home() {
   const [selectedMenuRows, setSelectedMenuRows] = useState<number[]>([1, 2, 3]);
   const [toast, setToast] = useState("");
   const importRef = useRef<HTMLInputElement | null>(null);
+  const ideaSelectorRef = useRef<HTMLDivElement | null>(null);
 
   const selectedIdea =
     ideas.find((idea) => idea.id === selectedIdeaId) ?? ideas[0] ?? seedIdeas[0];
   const references = referencePackages[selectedIdea.id] ?? [];
   const renderResult = renderResults[selectedIdea.id] ?? null;
+  const renderError = renderErrors[selectedIdea.id] ?? "";
   const activeDraft = productDrafts[selectedIdea.id] ?? emptyProductDraft();
   const sizeVariants = activeDraft.variants;
   const materials = activeDraft.materials;
@@ -1601,14 +1466,35 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        ideaSelectorRef.current &&
+        !ideaSelectorRef.current.contains(event.target as Node)
+      ) {
+        setIdeaMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIdeaMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
   const notify = (message: string) => setToast(message);
 
   const openStage = (next: Stage) => {
+    setIdeaMenuOpen(false);
     setStage(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const selectIdea = (idea: IdeaCard) => {
+  const activateIdea = (idea: IdeaCard) => {
     setSelectedIdeaId(idea.id);
     setReferencePackages((current) =>
       current[idea.id]
@@ -1621,6 +1507,10 @@ export default function Home() {
         : { ...current, [idea.id]: emptyProductDraft() }
     );
     setViewStyle(renderResults[idea.id]?.view ?? "exterior");
+  };
+
+  const selectIdea = (idea: IdeaCard) => {
+    activateIdea(idea);
     openStage("design");
     notify(
       tr(
@@ -1631,19 +1521,21 @@ export default function Home() {
     );
   };
 
+  const selectDesignIdea = (idea: IdeaCard) => {
+    activateIdea(idea);
+    setIdeaMenuOpen(false);
+    setDockOpen(false);
+    notify(
+      tr(
+        language,
+        `${idea.title} loaded into the Design Dock`,
+        `${idea.title} 已载入设计坞`
+      )
+    );
+  };
+
   const switchActiveDesign = (idea: IdeaCard) => {
-    setSelectedIdeaId(idea.id);
-    setReferencePackages((current) =>
-      current[idea.id]
-        ? current
-        : { ...current, [idea.id]: inheritedReferences(idea) }
-    );
-    setProductDrafts((current) =>
-      current[idea.id]
-        ? current
-        : { ...current, [idea.id]: emptyProductDraft() }
-    );
-    setViewStyle(renderResults[idea.id]?.view ?? "exterior");
+    activateIdea(idea);
     notify(
       tr(
         language,
@@ -1747,6 +1639,11 @@ export default function Home() {
       delete next[removedId];
       return next;
     });
+    setRenderErrors((current) => {
+      const next = { ...current };
+      delete next[removedId];
+      return next;
+    });
     setProductDrafts((current) => {
       const next = { ...current };
       delete next[removedId];
@@ -1782,42 +1679,115 @@ export default function Home() {
   };
 
   const generateRendering = async () => {
-    if (!references.length || rendering) return;
+    if (!references.length || renderingDesignId !== null) return;
     const idea = selectedIdea;
     const ideaId = idea.id;
     const packageSnapshot = [...references];
+    const viewSnapshot = viewStyle;
     const signature = designIntentSignature(idea, packageSnapshot);
     setRenderingDesignId(ideaId);
+    setRenderErrors((current) => ({ ...current, [ideaId]: "" }));
     try {
-      await new Promise((resolve) => window.setTimeout(resolve, 650));
-      const composed = await composeIntentRendering({
-        idea,
-        references: packageSnapshot,
-        view: viewStyle,
+      const apiReferences = await Promise.all(
+        packageSnapshot.map(async (reference) => {
+          let asset: string | undefined;
+          if (
+            reference.asset &&
+            (reference.kind === "image" || reference.kind === "canvas")
+          ) {
+            try {
+              asset = await normalizeReferenceImage(reference.asset);
+            } catch {
+              throw new Error("reference_image_failed");
+            }
+          }
+          return {
+            kind: reference.kind,
+            title: reference.title,
+            content: reference.content,
+            asset,
+          };
+        })
+      );
+      const response = await fetch("/api/render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idea: {
+            title: idea.title,
+            prompt: idea.prompt,
+            tags: idea.tags,
+          },
+          references: apiReferences,
+          view: viewSnapshot,
+        }),
       });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            image?: string;
+            inputCount?: number;
+            error?: { code?: string; message?: string };
+          }
+        | null;
+      if (!response.ok || !payload?.image) {
+        throw new Error(payload?.error?.code || "generation_failed");
+      }
+      const generatedImage = payload.image;
       const influences = Array.from(
         new Set(packageSnapshot.map((reference) => reference.kind))
       );
       setRenderResults((current) => ({
         ...current,
         [ideaId]: {
-          src: composed.src,
-          productId: composed.productId,
+          src: generatedImage,
+          productId: intentProductId(idea, packageSnapshot),
           signature,
           influences,
-          view: viewStyle,
-          inputs: packageSnapshot.length,
+          view: viewSnapshot,
+          inputs: payload.inputCount ?? packageSnapshot.length,
         },
       }));
       notify(tr(language, "Intent-aware rendering ready", "意图渲染已完成"));
-    } catch {
-      notify(
-        tr(
-          language,
-          "The intent package could not be rendered",
-          "暂时无法渲染此意图包"
-        )
-      );
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "generation_failed";
+      const message =
+        code === "not_configured"
+          ? tr(
+              language,
+              "Image generation is not configured.",
+              "图片生成功能尚未配置。"
+            )
+          : code === "rate_limit"
+            ? tr(
+                language,
+                "The image studio is busy. Try again in a moment.",
+                "图像工作室正忙，请稍后再试。"
+              )
+            : code === "moderation_blocked"
+              ? tr(
+                  language,
+                  "Revise the prompt or reference images, then try again.",
+                  "请调整文字或参考图片后重试。"
+                )
+              : code === "request_too_large"
+                ? tr(
+                    language,
+                    "The reference package is too large. Remove a large image and try again.",
+                    "参考包过大，请移除一张大图后重试。"
+                  )
+                : code === "reference_image_failed"
+                  ? tr(
+                      language,
+                      "A reference image could not be prepared. Try PNG, JPG, or WEBP.",
+                      "无法处理某张参考图，请改用 PNG、JPG 或 WEBP。"
+                    )
+                  : tr(
+                      language,
+                      "The intent package could not be rendered. Please try again.",
+                      "暂时无法渲染此意图包，请重试。"
+                    );
+      setRenderErrors((current) => ({ ...current, [ideaId]: message }));
+      notify(message);
     } finally {
       setRenderingDesignId((current) => (current === ideaId ? null : current));
     }
@@ -2326,13 +2296,74 @@ export default function Home() {
                   )}
                 </p>
               </div>
-              <button className="selected-idea" type="button" onClick={() => openStage("idea")}>
-                {selectedIdea.image ? <img src={selectedIdea.image} alt="" /> : <CakeSlice size={19} />}
-                <span>
-                  <small>{tr(language, "Designing", "正在设计")}</small>
-                  <strong>{selectedIdea.title}</strong>
-                </span>
-              </button>
+              <div className="selected-idea-wrap" ref={ideaSelectorRef}>
+                <button
+                  className="selected-idea"
+                  type="button"
+                  onClick={() => setIdeaMenuOpen((current) => !current)}
+                  aria-haspopup="listbox"
+                  aria-expanded={ideaMenuOpen}
+                  aria-label={tr(
+                    language,
+                    `Select an idea. Currently designing ${selectedIdea.title}`,
+                    `选择创意，当前正在设计 ${selectedIdea.title}`
+                  )}
+                >
+                  {selectedIdea.image ? (
+                    <img src={selectedIdea.image} alt="" />
+                  ) : (
+                    <span className="selected-idea-placeholder">
+                      <CakeSlice size={19} />
+                    </span>
+                  )}
+                  <span>
+                    <small>{tr(language, "Designing", "正在设计")}</small>
+                    <strong>{selectedIdea.title}</strong>
+                  </span>
+                  <ChevronDown
+                    className={cn("selected-idea-chevron", ideaMenuOpen && "open")}
+                    size={17}
+                  />
+                </button>
+                {ideaMenuOpen && (
+                  <div
+                    className="selected-idea-menu"
+                    role="listbox"
+                    aria-label={tr(language, "Idea gallery", "创意画廊")}
+                  >
+                    {ideas.map((idea) => {
+                      const selected = idea.id === selectedIdea.id;
+                      return (
+                        <button
+                          key={idea.id}
+                          className={cn("selected-idea-option", selected && "active")}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          onClick={() => selectDesignIdea(idea)}
+                        >
+                          {idea.image ? (
+                            <img src={idea.image} alt="" />
+                          ) : (
+                            <span className="selected-idea-placeholder">
+                              <CakeSlice size={16} />
+                            </span>
+                          )}
+                          <span>
+                            <strong>{idea.title}</strong>
+                            <small>
+                              {renderResults[idea.id]
+                                ? tr(language, "Rendering ready", "已有渲染")
+                                : tr(language, "Ready to design", "可开始设计")}
+                            </small>
+                          </span>
+                          {selected && <Check size={16} aria-hidden="true" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="design-grid">
@@ -2513,15 +2544,15 @@ export default function Home() {
                       <strong>
                         {tr(
                           language,
-                          `Reading ${references.length} references`,
-                          `正在读取 ${references.length} 个参考`
+                          `Generating from ${references.length} linked references`,
+                          `正在根据 ${references.length} 个关联参考生成`
                         )}
                       </strong>
                       <small>
                         {tr(
                           language,
-                          "shape · color · texture · structure",
-                          "形状 · 颜色 · 质地 · 结构"
+                          "text · reference images · canvas · annotations",
+                          "文字 · 参考图 · 画布 · 注释"
                         )}
                       </small>
                     </div>
@@ -2533,11 +2564,6 @@ export default function Home() {
                           language,
                           `${renderResult.view} product rendering of ${selectedIdea.title}`,
                           `${selectedIdea.title} 的${renderResult.view === "cutaway" ? "剖面" : "外观"}产品渲染图`
-                        )}
-                        className={cn(
-                          renderResult.view === "cutaway" &&
-                            renderResult.productId !== "moon" &&
-                            "simulated-cutaway"
                         )}
                       />
                       <span className="view-badge">
@@ -2560,6 +2586,12 @@ export default function Home() {
                     </div>
                   )}
                 </div>
+                {renderError && (
+                  <div className="render-error" role="alert">
+                    <X size={14} />
+                    <span>{renderError}</span>
+                  </div>
+                )}
                 {renderResult && (
                   <div className="render-summary">
                     <Layers3 size={14} />
@@ -2586,7 +2618,7 @@ export default function Home() {
                   className="button primary full"
                   type="button"
                   onClick={generateRendering}
-                  disabled={rendering || references.length === 0}
+                  disabled={renderingDesignId !== null || references.length === 0}
                 >
                   {rendering ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
                   {rendering

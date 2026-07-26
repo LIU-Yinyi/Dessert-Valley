@@ -39,16 +39,19 @@ test("server renders the Dessert Valley product shell", async () => {
 });
 
 test("keeps the simplified multimodal workflow and responsive contracts", async () => {
-  const [page, css, layout, packageJson] = await Promise.all([
+  const [page, css, layout, packageJson, renderRoute] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/render/route.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /type ReferenceKind = "text" \| "audio" \| "image" \| "canvas"/);
   assert.match(page, /inheritedReferences\(idea\)/);
-  assert.match(page, /composeIntentRendering/);
+  assert.match(page, /fetch\("\/api\/render"/);
+  assert.match(page, /normalizeReferenceImage/);
+  assert.doesNotMatch(page, /composeIntentRendering|simulated-cutaway/);
   assert.match(page, /intentSignature/);
   assert.match(page, /designIntentSignature/);
   assert.match(page, /referencePackages/);
@@ -62,6 +65,9 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /className="agent-window"/);
   assert.match(page, /className="alias-tip"/);
   assert.match(page, /className="active-design-switcher pixel-panel"/);
+  assert.match(page, /className="selected-idea-wrap"/);
+  assert.match(page, /aria-haspopup="listbox"/);
+  assert.match(page, /selectDesignIdea\(idea\)/);
   assert.match(page, /function IdeaEditor/);
   assert.match(page, /function IdeaDeleteDialog/);
   assert.match(page, /parseIdeaTags/);
@@ -93,6 +99,9 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /\.cost-table-scroll/);
   assert.match(css, /\.production-column-headings/);
   assert.match(css, /\.active-design-list/);
+  assert.match(css, /\.selected-idea-menu/);
+  assert.match(css, /\.selected-idea-option/);
+  assert.match(css, /\.render-error/);
   assert.match(css, /\.idea-card-actions/);
   assert.match(css, /\.idea-tag-preview/);
   assert.match(css, /\.button\.danger/);
@@ -105,4 +114,13 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(packageJson, /"name": "dessert-valley"/);
   assert.doesNotMatch(layout, /codex-preview|_sites-preview/i);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
+
+  assert.match(renderRoute, /gpt-image-2/);
+  assert.match(renderRoute, /OPENAI_API_KEY/);
+  assert.match(renderRoute, /\/v1\/images\/edits/);
+  assert.match(renderRoute, /form\.append\(\s*"image\[\]"/);
+  assert.match(renderRoute, /buildRenderingPrompt/);
+  assert.match(renderRoute, /DESIGN DOCK REFERENCES/);
+  assert.match(renderRoute, /Input image \$\{index \+ 1\}/);
+  assert.doesNotMatch(renderRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
 });
