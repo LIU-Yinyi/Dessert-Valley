@@ -38,6 +38,7 @@ import {
 import {
   ChangeEvent,
   CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
   useEffect,
   useMemo,
@@ -88,10 +89,8 @@ type PlanStep = {
 type ProductionRow = {
   id: number;
   productId: ProductId;
+  variantId: number | null;
   count: number;
-  sizeValue: string;
-  sizeUnit: string;
-  style: string;
 };
 
 type RenderResult = {
@@ -123,6 +122,12 @@ type ProductDraft = {
   variants: SizeVariant[];
   materials: MaterialRow[];
   planSteps: PlanStep[];
+};
+
+type PixelSelectOption<Value extends string | number> = {
+  value: Value;
+  label: string;
+  helper?: string;
 };
 
 const stages: { id: Stage; icon: typeof Sprout }[] = [
@@ -440,6 +445,56 @@ function sizeVariantScale(variant: SizeVariant, baseVariant: SizeVariant) {
   return Math.min(100, Math.max(0.01, variantMeasure / baseMeasure));
 }
 
+function variantDisplayName(
+  variant: SizeVariant,
+  index: number,
+  language: Language
+) {
+  return (
+    variant.name.trim() ||
+    tr(language, `Specification ${index + 1}`, `规格 ${index + 1}`)
+  );
+}
+
+function variantDimensionLabel(variant: SizeVariant, language: Language) {
+  const dimensions = [variant.width, variant.height, variant.depth].filter(
+    (value) => Number(value) > 0
+  );
+  return dimensions.length
+    ? `${dimensions.join(" × ")} ${variant.unit}`
+    : tr(language, "Dimensions not set", "未填写尺寸");
+}
+
+function normalizeProductionRows(value: unknown): ProductionRow[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const candidate = entry as Record<string, unknown>;
+    const productId =
+      typeof candidate.productId === "string" &&
+      candidate.productId in products
+        ? (candidate.productId as ProductId)
+        : null;
+    if (!productId) return [];
+    const parsedId = Number(candidate.id);
+    const parsedCount = Number(candidate.count);
+    const parsedVariantId =
+      candidate.variantId === null || candidate.variantId === undefined
+        ? null
+        : Number(candidate.variantId);
+    return [
+      {
+        id: Number.isFinite(parsedId) ? parsedId : uid(),
+        productId,
+        variantId: Number.isFinite(parsedVariantId)
+          ? parsedVariantId
+          : null,
+        count: Number.isFinite(parsedCount) ? Math.max(0, parsedCount) : 0,
+      },
+    ];
+  });
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -514,6 +569,139 @@ function wrapCanvasText(
   }
   visible[maximumLines - 1] = `${lastLine}…`;
   return visible;
+}
+
+function PixelSelect<Value extends string | number>({
+  value,
+  options,
+  label,
+  onChange,
+}: {
+  value: Value;
+  options: PixelSelectOption<Value>[];
+  label: string;
+  onChange: (value: Value) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const selectedOption =
+    options.find((option) => option.value === value) ?? options[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const closeFromOutside = (event: globalThis.PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeFromOutside);
+    return () => document.removeEventListener("pointerdown", closeFromOutside);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => {
+      (
+        menuRef.current?.querySelector(
+          '[role="option"][aria-selected="true"]'
+        ) as HTMLButtonElement | null
+      )?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
+
+  const closeAndFocus = () => {
+    setOpen(false);
+    window.requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+
+  const moveOptionFocus = (
+    event: ReactKeyboardEvent<HTMLButtonElement>
+  ) => {
+    const optionButtons = Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]') ??
+        []
+    );
+    const currentIndex = optionButtons.indexOf(event.currentTarget);
+    const direction =
+      event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+    if (direction) {
+      event.preventDefault();
+      optionButtons[
+        (currentIndex + direction + optionButtons.length) %
+          optionButtons.length
+      ]?.focus();
+      return;
+    }
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      optionButtons[event.key === "Home" ? 0 : optionButtons.length - 1]?.focus();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeAndFocus();
+    }
+  };
+
+  return (
+    <div className={cn("pixel-select", open && "open")} ref={rootRef}>
+      <button
+        ref={triggerRef}
+        className="pixel-select-trigger"
+        type="button"
+        aria-label={label}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            setOpen(true);
+          }
+          if (event.key === "Escape" && open) {
+            event.preventDefault();
+            closeAndFocus();
+          }
+        }}
+      >
+        <span>{selectedOption?.label ?? "—"}</span>
+        <ChevronDown size={14} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          className="pixel-select-menu"
+          ref={menuRef}
+          role="listbox"
+          aria-label={label}
+        >
+          {options.map((option) => {
+            const selected = option.value === value;
+            return (
+              <button
+                className={cn("pixel-select-option", selected && "selected")}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                key={String(option.value)}
+                onClick={() => {
+                  onChange(option.value);
+                  closeAndFocus();
+                }}
+                onKeyDown={moveOptionFocus}
+              >
+                <span>
+                  <strong>{option.label}</strong>
+                  {option.helper && <small>{option.helper}</small>}
+                </span>
+                {selected && <Check size={13} aria-hidden="true" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function useDialogFocus(onClose: () => void) {
@@ -1436,9 +1624,9 @@ export default function Home() {
   const [agentAudioName, setAgentAudioName] = useState("");
   const [bakeMode, setBakeMode] = useState<"chef" | "diner">("chef");
   const [productionRows, setProductionRows] = useState<ProductionRow[]>([
-    { id: 1, productId: "moon", count: 4, sizeValue: "8", sizeUnit: "cm", style: "Pearl glaze" },
-    { id: 2, productId: "berry", count: 6, sizeValue: "9", sizeUnit: "cm", style: "Picnic gingham" },
-    { id: 3, productId: "garden", count: 4, sizeValue: "8", sizeUnit: "cm", style: "Chamomile moss" },
+    { id: 1, productId: "moon", variantId: null, count: 4 },
+    { id: 2, productId: "berry", variantId: null, count: 6 },
+    { id: 3, productId: "garden", variantId: null, count: 4 },
   ]);
   const [prices, setPrices] = useState([11.8, 28.5, 18.2, 31.4, 2.4]);
   const [selectedHandbookIdeaIds, setSelectedHandbookIdeaIds] = useState<number[]>([1, 2, 3]);
@@ -1482,6 +1670,25 @@ export default function Home() {
         ? 1
         : sizeVariantScale(sizeVariant, sizeVariants[0]),
   }));
+  const productionVariantsByProduct = useMemo(
+    () =>
+      Object.fromEntries(
+        (Object.keys(products) as ProductId[]).map((productId) => {
+          const matchingIdea = ideas.find(
+            (idea) =>
+              (renderResults[idea.id]?.productId ?? ideaVariant(idea)) ===
+              productId
+          );
+          return [
+            productId,
+            matchingIdea
+              ? (productDrafts[matchingIdea.id]?.variants ?? [])
+              : [],
+          ];
+        })
+      ) as Record<ProductId, SizeVariant[]>,
+    [ideas, productDrafts, renderResults]
+  );
   const selectedHandbookIdeas = ideas.filter((idea) =>
     selectedHandbookIdeaIds.includes(idea.id)
   );
@@ -2123,17 +2330,16 @@ export default function Home() {
       current.map((row) => (row.id === id ? { ...row, ...patch } : row))
     );
 
-  const addProductionStyle = () => {
+  const addProductionBatch = () => {
     const nextId = uid();
+    const defaultVariants = productionVariantsByProduct.moon;
     setProductionRows((current) => [
       ...current,
       {
         id: nextId,
         productId: "moon",
+        variantId: defaultVariants[0]?.id ?? null,
         count: 1,
-        sizeValue: "8",
-        sizeUnit: "cm",
-        style: tr(language, "New style", "新样式"),
       },
     ]);
   };
@@ -2142,12 +2348,20 @@ export default function Home() {
     () =>
       productionRows.reduce(
         (totals, row) => {
-          totals[row.productId] += Math.max(0, row.count);
+          const variants = productionVariantsByProduct[row.productId];
+          const selectedVariant =
+            variants.find((variant) => variant.id === row.variantId) ??
+            variants[0];
+          const scale =
+            selectedVariant && variants[0]
+              ? sizeVariantScale(selectedVariant, variants[0])
+              : 1;
+          totals[row.productId] += Math.max(0, row.count) * scale;
           return totals;
         },
         { moon: 0, berry: 0, garden: 0 }
       ),
-    [productionRows]
+    [productionRows, productionVariantsByProduct]
   );
 
   const consolidateRows = useMemo(
@@ -2212,7 +2426,12 @@ export default function Home() {
     try {
       const payload = JSON.parse(await file.text());
       if (Array.isArray(payload.ideas)) setIdeas(payload.ideas);
-      if (Array.isArray(payload.productionRows)) setProductionRows(payload.productionRows);
+      const importedProductionRows = normalizeProductionRows(
+        payload.productionRows
+      );
+      if (importedProductionRows) {
+        setProductionRows(importedProductionRows);
+      }
       if (payload.referencePackages && typeof payload.referencePackages === "object") {
         setReferencePackages(payload.referencePackages);
       }
@@ -3658,27 +3877,57 @@ export default function Home() {
                       <p>
                         {tr(
                           language,
-                          "Create a batch for every dessert style and serving size.",
-                          "为每一种甜点风格与成品尺寸建立独立批次。"
+                          "Set the dessert, its Product-page specification, and the quantity for each batch.",
+                          "为每个批次选择甜点、产品页中的规格和生产数量。"
                         )}
                       </p>
                     </div>
-                    <button className="button secondary compact-button" type="button" onClick={addProductionStyle}>
-                      <Plus size={14} /> {tr(language, "Style batch", "添加风格批次")}
+                    <button
+                      className="button secondary compact-button"
+                      type="button"
+                      onClick={addProductionBatch}
+                    >
+                      <Plus size={14} /> {tr(language, "Add batch", "添加批次")}
                     </button>
                   </div>
                   <div className="production-column-headings" aria-hidden="true">
                     <span />
                     <span>{tr(language, "Dessert", "甜点")}</span>
-                    <span>{tr(language, "Style", "风格")}</span>
+                    <span>{tr(language, "Specification", "规格")}</span>
                     <span>{tr(language, "Qty", "数量")}</span>
-                    <span>{tr(language, "Finished size", "成品尺寸")}</span>
                     <span />
                   </div>
                   <div className="production-list">
                     {productionRows.map((row) => {
                       const product = products[row.productId];
                       const localizedProductName = productName(row.productId, language);
+                      const productVariants =
+                        productionVariantsByProduct[row.productId];
+                      const selectedVariant =
+                        productVariants.find(
+                          (variant) => variant.id === row.variantId
+                        ) ?? productVariants[0];
+                      const productOptions = (
+                        Object.keys(products) as ProductId[]
+                      ).map((productId) => ({
+                        value: productId,
+                        label: productName(productId, language),
+                        helper: products[productId].alias,
+                      }));
+                      const specificationOptions = productVariants.map(
+                        (productVariant, index) => ({
+                          value: productVariant.id,
+                          label: variantDisplayName(
+                            productVariant,
+                            index,
+                            language
+                          ),
+                          helper: variantDimensionLabel(
+                            productVariant,
+                            language
+                          ),
+                        })
+                      );
                       return (
                         <article className="production-row" key={row.id}>
                           <img
@@ -3690,35 +3939,56 @@ export default function Home() {
                               `${localizedProductName} 产品渲染图`
                             )}
                           />
-                          <label className="production-field product-field">
+                          <div className="production-field product-field">
                             <span>{tr(language, "Dessert", "甜点")}</span>
-                            <select
+                            <PixelSelect
                               value={row.productId}
-                              onChange={(event) =>
+                              options={productOptions}
+                              onChange={(productId) => {
+                                const nextVariants =
+                                  productionVariantsByProduct[productId];
                                 updateProduction(row.id, {
-                                  productId: event.target.value as ProductionRow["productId"],
-                                })
-                              }
-                              aria-label={tr(language, "Dessert card", "甜点卡")}
-                            >
-                              {(Object.keys(products) as Array<keyof typeof products>).map((id) => (
-                                <option value={id} key={id}>{productName(id, language)}</option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="production-field style-field">
-                            <span>{tr(language, "Style", "风格")}</span>
-                            <input
-                              value={row.style}
-                              onChange={(event) => updateProduction(row.id, { style: event.target.value })}
-                              placeholder={tr(language, "Style name", "风格名称")}
-                              aria-label={tr(
+                                  productId,
+                                  variantId: nextVariants[0]?.id ?? null,
+                                });
+                              }}
+                              label={tr(
                                 language,
-                                `${localizedProductName} style`,
-                                `${localizedProductName} 风格`
+                                "Dessert card",
+                                "甜点卡"
                               )}
                             />
-                          </label>
+                          </div>
+                          <div className="production-field spec-field">
+                            <span>
+                              {tr(language, "Specification", "规格")}
+                            </span>
+                            {selectedVariant ? (
+                              <PixelSelect
+                                value={selectedVariant.id}
+                                options={specificationOptions}
+                                onChange={(variantId) =>
+                                  updateProduction(row.id, { variantId })
+                                }
+                                label={tr(
+                                  language,
+                                  `${localizedProductName} specification`,
+                                  `${localizedProductName} 规格`
+                                )}
+                              />
+                            ) : (
+                              <div
+                                className="production-default-spec"
+                                title={tr(
+                                  language,
+                                  "No specification has been set on the Product page.",
+                                  "该产品尚未在“产品”页设置规格。"
+                                )}
+                              >
+                                {tr(language, "Default", "默认")}
+                              </div>
+                            )}
+                          </div>
                           <label className="production-field qty-field">
                             <span>{tr(language, "Qty", "数量")}</span>
                             <input
@@ -3728,30 +3998,12 @@ export default function Home() {
                               onChange={(event) =>
                                 updateProduction(row.id, { count: Number(event.target.value) })
                               }
+                              aria-label={tr(
+                                language,
+                                `${localizedProductName} quantity`,
+                                `${localizedProductName} 数量`
+                              )}
                             />
-                          </label>
-                          <label className="production-field production-size">
-                            <span>{tr(language, "Finished size", "成品尺寸")}</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.1"
-                              value={row.sizeValue}
-                              onChange={(event) =>
-                                updateProduction(row.id, { sizeValue: event.target.value })
-                              }
-                            />
-                            <select
-                              value={row.sizeUnit}
-                              onChange={(event) =>
-                                updateProduction(row.id, { sizeUnit: event.target.value })
-                              }
-                            >
-                              <option>cm</option>
-                              <option>mm</option>
-                              <option>in</option>
-                              <option>g</option>
-                            </select>
                           </label>
                           <button
                             className="square-button mini danger"

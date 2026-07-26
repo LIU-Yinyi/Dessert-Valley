@@ -87,10 +87,18 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /selectDesignIdea\(idea\)/);
   assert.match(page, /function IdeaEditor/);
   assert.match(page, /function IdeaDeleteDialog/);
+  assert.match(page, /function PixelSelect/);
   assert.match(page, /parseIdeaTags/);
   assert.match(page, /setIdeaEditor\(idea\)/);
   assert.match(page, /requestRemoveIdea\(idea\)/);
   assert.match(page, /className="production-column-headings"/);
+  assert.match(page, /className="production-field spec-field"/);
+  assert.match(page, /productionVariantsByProduct/);
+  assert.match(page, /tr\(language,\s*"Default",\s*"默认"\)/s);
+  assert.doesNotMatch(
+    page,
+    /className="production-field style-field"|className="production-field production-size"/,
+  );
   assert.match(page, /className="world-scenery"/);
   assert.match(page, /aria-current=\{item\.id === stage \? "step" : undefined\}/);
   assert.match(page, /function useDialogFocus/);
@@ -129,6 +137,8 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /\.idea-tag-preview/);
   assert.match(css, /\.button\.danger/);
   assert.match(css, /\.variant-grid/);
+  assert.match(css, /\.pixel-select-menu/);
+  assert.match(css, /\.production-default-spec/);
   assert.match(css, /\.language-button/);
   assert.match(css, /\.alias-tip:hover::after/);
 
