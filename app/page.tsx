@@ -96,7 +96,7 @@ type PlanStep = {
 
 type ProductionRow = {
   id: number;
-  productId: ProductId;
+  ideaId: number;
   variantId: number | null;
   count: number;
 };
@@ -145,7 +145,7 @@ type WorkspaceData = {
   productDrafts: Record<number, ProductDraft>;
   bakeMode: "chef" | "diner";
   productionRows: ProductionRow[];
-  prices: number[];
+  materialPrices: Record<string, number>;
   selectedHandbookIdeaIds: number[];
   handbookStylePrompt: string;
   handbookReferenceImage: string;
@@ -243,13 +243,39 @@ function localizedIdeaName(idea: IdeaCard, language: Language) {
     : idea.title;
 }
 
-const productionMaterials = [
-  { name: "Whipping cream", nameZh: "淡奶油", unit: "kg", per: { moon: 0.12, berry: 0.1, garden: 0.11 } },
-  { name: "White chocolate", nameZh: "白巧克力", unit: "kg", per: { moon: 0.05, berry: 0.035, garden: 0.04 } },
-  { name: "Fruit / purée", nameZh: "水果／果泥", unit: "kg", per: { moon: 0.045, berry: 0.12, garden: 0.04 } },
-  { name: "Nut flour / paste", nameZh: "坚果粉／坚果酱", unit: "kg", per: { moon: 0.04, berry: 0.02, garden: 0.09 } },
-  { name: "Garnish set", nameZh: "装饰组合", unit: "set", per: { moon: 1, berry: 1, garden: 1 } },
-];
+function ideaAlias(idea: IdeaCard, index: number) {
+  const matchingProduct = (
+    Object.entries(products) as Array<[ProductId, (typeof products)[ProductId]]>
+  ).find(([, product]) => product.name === idea.title);
+  if (matchingProduct) return matchingProduct[1].alias;
+
+  const words = idea.title.match(/[\p{L}\p{N}]+/gu) ?? [];
+  const latinInitials = words
+    .filter((word) => /^[a-z0-9]/i.test(word))
+    .map((word) => word[0])
+    .join("")
+    .slice(0, 4)
+    .toUpperCase();
+  if (latinInitials) return latinInitials;
+  return `D${index + 1}`;
+}
+
+function materialKey(name: string, unit: string) {
+  const normalize = (value: string) =>
+    value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
+  return `${normalize(name)}::${normalize(unit)}`;
+}
+
+function materialAmount(value: string) {
+  const parsed = Number(value.trim().replace(",", "."));
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function formatMaterialAmount(value: number, language: Language) {
+  return new Intl.NumberFormat(language === "zh" ? "zh-CN" : "en", {
+    maximumFractionDigits: Math.abs(value) < 1 ? 3 : 2,
+  }).format(value);
+}
 
 const referenceMeta: Record<
   ReferenceKind,
@@ -476,13 +502,7 @@ function emptyProductDraft(): ProductDraft {
   return { variants: [], materials: [], planSteps: [] };
 }
 
-const seedProductionRows: ProductionRow[] = [
-  { id: 1, productId: "moon", variantId: null, count: 4 },
-  { id: 2, productId: "berry", variantId: null, count: 6 },
-  { id: 3, productId: "garden", variantId: null, count: 4 },
-];
-
-const seedPrices = [11.8, 28.5, 18.2, 31.4, 2.4];
+const seedProductionRows: ProductionRow[] = [];
 
 function createSeedWorkspaceData(): WorkspaceData {
   const ideas = seedIdeas.map((idea) => ({
@@ -506,7 +526,7 @@ function createSeedWorkspaceData(): WorkspaceData {
     ),
     bakeMode: "chef",
     productionRows: seedProductionRows.map((row) => ({ ...row })),
-    prices: [...seedPrices],
+    materialPrices: {},
     selectedHandbookIdeaIds: ideas.map((idea) => idea.id),
     handbookStylePrompt: "",
     handbookReferenceImage: "",
@@ -519,7 +539,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function isWorkspaceData(value: unknown): value is WorkspaceData {
+type PersistedWorkspaceCore = Omit<
+  WorkspaceData,
+  "materialPrices" | "productionRows"
+> & {
+  materialPrices?: unknown;
+  prices?: unknown;
+  productionRows: unknown;
+};
+
+function isWorkspaceCoreData(
+  value: unknown
+): value is PersistedWorkspaceCore {
   if (!isRecord(value)) return false;
   const validStage =
     value.stage === "idea" ||
@@ -560,8 +591,6 @@ function isWorkspaceData(value: unknown): value is WorkspaceData {
     isRecord(value.renderResults) &&
     isRecord(value.productDrafts) &&
     Array.isArray(value.productionRows) &&
-    Array.isArray(value.prices) &&
-    value.prices.every((price) => typeof price === "number") &&
     Array.isArray(value.selectedHandbookIdeaIds) &&
     value.selectedHandbookIdeaIds.every((id) => typeof id === "number") &&
     typeof value.handbookStylePrompt === "string" &&
@@ -612,27 +641,68 @@ function variantDimensionLabel(variant: SizeVariant, language: Language) {
     : tr(language, "Dimensions not set", "未填写尺寸");
 }
 
-function normalizeProductionRows(value: unknown): ProductionRow[] | null {
-  if (!Array.isArray(value)) return null;
+function normalizeMaterialPrices(value: unknown) {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, price]) => {
+      const parsedPrice = Number(price);
+      return key && Number.isFinite(parsedPrice)
+        ? [[key, Math.max(0, parsedPrice)]]
+        : [];
+    })
+  );
+}
+
+function isLegacySeedProductionRows(value: unknown) {
+  if (!Array.isArray(value) || value.length !== 3) return false;
+  const expected: Array<[ProductId, number]> = [
+    ["moon", 4],
+    ["berry", 6],
+    ["garden", 4],
+  ];
+  return expected.every(
+    ([productId, count], index) =>
+      isRecord(value[index]) &&
+      value[index].productId === productId &&
+      Number(value[index].count) === count
+  );
+}
+
+function normalizeProductionRows(
+  value: unknown,
+  ideas: IdeaCard[],
+  renderResults: Record<number, RenderResult | null>
+): ProductionRow[] {
+  if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
-    if (!entry || typeof entry !== "object") return [];
-    const candidate = entry as Record<string, unknown>;
-    const productId =
-      typeof candidate.productId === "string" &&
-      candidate.productId in products
-        ? (candidate.productId as ProductId)
+    if (!isRecord(entry)) return [];
+    const candidateIdeaId = Number(entry.ideaId);
+    const directIdea = Number.isFinite(candidateIdeaId)
+      ? ideas.find((idea) => idea.id === candidateIdeaId)
+      : null;
+    const legacyProductId =
+      typeof entry.productId === "string" && entry.productId in products
+        ? (entry.productId as ProductId)
         : null;
-    if (!productId) return [];
-    const parsedId = Number(candidate.id);
-    const parsedCount = Number(candidate.count);
+    const legacyIdea = legacyProductId
+      ? ideas.find(
+          (idea) =>
+            (renderResults[idea.id]?.productId ?? ideaVariant(idea)) ===
+            legacyProductId
+        )
+      : null;
+    const ideaId = directIdea?.id ?? legacyIdea?.id;
+    if (ideaId === undefined) return [];
+    const parsedId = Number(entry.id);
+    const parsedCount = Number(entry.count);
     const parsedVariantId =
-      candidate.variantId === null || candidate.variantId === undefined
+      entry.variantId === null || entry.variantId === undefined
         ? null
-        : Number(candidate.variantId);
+        : Number(entry.variantId);
     return [
       {
         id: Number.isFinite(parsedId) ? parsedId : uid(),
-        productId,
+        ideaId,
         variantId: Number.isFinite(parsedVariantId)
           ? parsedVariantId
           : null,
@@ -640,6 +710,30 @@ function normalizeProductionRows(value: unknown): ProductionRow[] | null {
       },
     ];
   });
+}
+
+function migrateWorkspaceData(
+  value: unknown,
+  storedVersion: number | undefined
+): WorkspaceData | null {
+  if (!isWorkspaceCoreData(value)) return null;
+  const productionRows =
+    storedVersion !== undefined &&
+    storedVersion < WORKSPACE_STORAGE_VERSION &&
+    isLegacySeedProductionRows(value.productionRows)
+      ? []
+      : normalizeProductionRows(
+          value.productionRows,
+          value.ideas,
+          value.renderResults
+        );
+  const migrated = {
+    ...value,
+    productionRows,
+    materialPrices: normalizeMaterialPrices(value.materialPrices),
+  } as WorkspaceData & { prices?: unknown };
+  delete migrated.prices;
+  return migrated;
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -1777,7 +1871,9 @@ export default function Home() {
   const [productionRows, setProductionRows] = useState<ProductionRow[]>(() =>
     seedProductionRows.map((row) => ({ ...row }))
   );
-  const [prices, setPrices] = useState([...seedPrices]);
+  const [materialPrices, setMaterialPrices] = useState<Record<string, number>>(
+    {}
+  );
   const [selectedHandbookIdeaIds, setSelectedHandbookIdeaIds] = useState<number[]>([1, 2, 3]);
   const [handbookStylePrompt, setHandbookStylePrompt] = useState("");
   const [handbookReferenceImage, setHandbookReferenceImage] = useState("");
@@ -1820,24 +1916,15 @@ export default function Home() {
         ? 1
         : sizeVariantScale(sizeVariant, sizeVariants[0]),
   }));
-  const productionVariantsByProduct = useMemo(
+  const productionVariantsByIdea = useMemo(
     () =>
       Object.fromEntries(
-        (Object.keys(products) as ProductId[]).map((productId) => {
-          const matchingIdea = ideas.find(
-            (idea) =>
-              (renderResults[idea.id]?.productId ?? ideaVariant(idea)) ===
-              productId
-          );
-          return [
-            productId,
-            matchingIdea
-              ? (productDrafts[matchingIdea.id]?.variants ?? [])
-              : [],
-          ];
-        })
-      ) as Record<ProductId, SizeVariant[]>,
-    [ideas, productDrafts, renderResults]
+        ideas.map((idea) => [
+          idea.id,
+          productDrafts[idea.id]?.variants ?? [],
+        ])
+      ) as Record<number, SizeVariant[]>,
+    [ideas, productDrafts]
   );
   const selectedHandbookIdeas = ideas.filter((idea) =>
     selectedHandbookIdeaIds.includes(idea.id)
@@ -1935,15 +2022,15 @@ export default function Home() {
 
       try {
         const stored = await readWorkspace<unknown>();
-        const workspace =
-          stored?.version === WORKSPACE_STORAGE_VERSION &&
-          isWorkspaceData(stored.data)
-            ? stored.data
-            : createSeedWorkspaceData();
+        const migratedWorkspace = migrateWorkspaceData(
+          stored?.data,
+          stored?.version
+        );
+        const workspace = migratedWorkspace ?? createSeedWorkspaceData();
 
         if (
           stored?.version !== WORKSPACE_STORAGE_VERSION ||
-          !isWorkspaceData(stored?.data)
+          !migratedWorkspace
         ) {
           await writeWorkspace(workspace);
         }
@@ -1954,9 +2041,6 @@ export default function Home() {
         )
           ? workspace.selectedIdeaId
           : workspace.ideas[0].id;
-        const restoredProductionRows = normalizeProductionRows(
-          workspace.productionRows
-        );
 
         setStage(workspace.stage);
         setIdeas(workspace.ideas);
@@ -1969,10 +2053,8 @@ export default function Home() {
         setRenderResults(workspace.renderResults);
         setProductDrafts(workspace.productDrafts);
         setBakeMode(workspace.bakeMode);
-        if (restoredProductionRows) {
-          setProductionRows(restoredProductionRows);
-        }
-        setPrices(workspace.prices);
+        setProductionRows(workspace.productionRows);
+        setMaterialPrices(workspace.materialPrices);
         setSelectedHandbookIdeaIds(workspace.selectedHandbookIdeaIds);
         setHandbookStylePrompt(workspace.handbookStylePrompt);
         setHandbookReferenceImage(workspace.handbookReferenceImage);
@@ -2011,7 +2093,7 @@ export default function Home() {
       productDrafts,
       bakeMode,
       productionRows,
-      prices,
+      materialPrices,
       selectedHandbookIdeaIds,
       handbookStylePrompt,
       handbookReferenceImage,
@@ -2044,7 +2126,7 @@ export default function Home() {
     ideaImageName,
     ideas,
     ideaText,
-    prices,
+    materialPrices,
     productionRows,
     productDrafts,
     referencePackages,
@@ -2259,6 +2341,9 @@ export default function Home() {
     });
     setSelectedHandbookIdeaIds((current) =>
       current.filter((ideaId) => ideaId !== removedId)
+    );
+    setProductionRows((current) =>
+      current.filter((row) => row.ideaId !== removedId)
     );
     if (selectedIdeaId === removedId) {
       const nextIdea = remainingIdeas[0];
@@ -2661,52 +2746,103 @@ export default function Home() {
       current.map((row) => (row.id === id ? { ...row, ...patch } : row))
     );
 
-  const addProductionBatch = () => {
-    const nextId = uid();
-    const defaultVariants = productionVariantsByProduct.moon;
+  const addProductionBatchForIdea = (
+    ideaId: number,
+    continueToBake = false
+  ) => {
+    const idea = ideas.find((candidate) => candidate.id === ideaId) ?? ideas[0];
+    if (!idea) return;
+    const defaultVariants = productionVariantsByIdea[idea.id] ?? [];
     setProductionRows((current) => [
       ...current,
       {
-        id: nextId,
-        productId: "moon",
+        id: uid(),
+        ideaId: idea.id,
         variantId: defaultVariants[0]?.id ?? null,
         count: 1,
       },
     ]);
+    if (continueToBake) {
+      setBakeMode("chef");
+      openStage("bake");
+      notify(
+        tr(
+          language,
+          `${idea.title} added as a production batch`,
+          `${idea.title} 已添加为生产批次`
+        )
+      );
+    }
   };
 
-  const countsByProduct = useMemo(
+  const addProductionBatch = () =>
+    addProductionBatchForIdea(selectedIdea.id);
+
+  const productionIdeas = useMemo(
     () =>
-      productionRows.reduce(
-        (totals, row) => {
-          const variants = productionVariantsByProduct[row.productId];
-          const selectedVariant =
-            variants.find((variant) => variant.id === row.variantId) ??
-            variants[0];
-          const scale =
-            selectedVariant && variants[0]
-              ? sizeVariantScale(selectedVariant, variants[0])
-              : 1;
-          totals[row.productId] += Math.max(0, row.count) * scale;
-          return totals;
-        },
-        { moon: 0, berry: 0, garden: 0 }
-      ),
-    [productionRows, productionVariantsByProduct]
+      productionRows.reduce<IdeaCard[]>((linkedIdeas, row) => {
+        const idea = ideas.find((candidate) => candidate.id === row.ideaId);
+        return idea && !linkedIdeas.some((candidate) => candidate.id === idea.id)
+          ? [...linkedIdeas, idea]
+          : linkedIdeas;
+      }, []),
+    [ideas, productionRows]
   );
 
   const consolidateRows = useMemo(
-    () =>
-      productionMaterials.map((material, index) => {
-        const amounts = {
-          moon: material.per.moon * countsByProduct.moon,
-          berry: material.per.berry * countsByProduct.berry,
-          garden: material.per.garden * countsByProduct.garden,
-        };
-        const total = amounts.moon + amounts.berry + amounts.garden;
-        return { ...material, amounts, total, cost: total * prices[index] };
-      }),
-    [countsByProduct, prices]
+    () => {
+      const consolidated = new Map<
+        string,
+        {
+          key: string;
+          name: string;
+          unit: string;
+          amounts: Record<number, number>;
+        }
+      >();
+
+      productionRows.forEach((batch) => {
+        const idea = ideas.find((candidate) => candidate.id === batch.ideaId);
+        if (!idea) return;
+        const draft = productDrafts[idea.id] ?? emptyProductDraft();
+        const variants = draft.variants;
+        const selectedVariant =
+          variants.find((variant) => variant.id === batch.variantId) ??
+          variants[0];
+        const variantScale =
+          selectedVariant && variants[0]
+            ? sizeVariantScale(selectedVariant, variants[0])
+            : 1;
+        const batchScale = Math.max(0, batch.count) * variantScale;
+
+        draft.materials.forEach((material) => {
+          const name = material.name.trim();
+          if (!name) return;
+          const unit = material.unit.trim() || "unit";
+          const key = materialKey(name, unit);
+          const current = consolidated.get(key) ?? {
+            key,
+            name,
+            unit,
+            amounts: {},
+          };
+          current.amounts[idea.id] =
+            (current.amounts[idea.id] ?? 0) +
+            materialAmount(material.amount) * batchScale;
+          consolidated.set(key, current);
+        });
+      });
+
+      return Array.from(consolidated.values()).map((row) => {
+        const total = Object.values(row.amounts).reduce(
+          (sum, amount) => sum + amount,
+          0
+        );
+        const price = materialPrices[row.key] ?? 0;
+        return { ...row, total, price, cost: total * price };
+      });
+    },
+    [ideas, materialPrices, productDrafts, productionRows]
   );
 
   const exportCards = () => {
@@ -2739,6 +2875,7 @@ export default function Home() {
       referencePackages: exportableReferences,
       productDrafts: exportableDrafts,
       productionRows,
+      materialPrices,
       handbook: {
         selectedIdeaIds: selectedHandbookIdeaIds,
         stylePrompt: handbookStylePrompt,
@@ -2756,13 +2893,17 @@ export default function Home() {
     if (!file) return;
     try {
       const payload = JSON.parse(await file.text());
-      if (Array.isArray(payload.ideas)) setIdeas(payload.ideas);
+      const importedIdeas = Array.isArray(payload.ideas)
+        ? (payload.ideas as IdeaCard[])
+        : ideas;
+      if (Array.isArray(payload.ideas)) setIdeas(importedIdeas);
       const importedProductionRows = normalizeProductionRows(
-        payload.productionRows
+        payload.productionRows,
+        importedIdeas,
+        renderResults
       );
-      if (importedProductionRows) {
-        setProductionRows(importedProductionRows);
-      }
+      setProductionRows(importedProductionRows);
+      setMaterialPrices(normalizeMaterialPrices(payload.materialPrices));
       if (payload.referencePackages && typeof payload.referencePackages === "object") {
         setReferencePackages(payload.referencePackages);
       }
@@ -4174,8 +4315,15 @@ export default function Home() {
             </section>
 
             <div className="stage-end">
-              <button className="button primary" type="button" onClick={() => openStage("bake")}>
-                {tr(language, "Save product card", "保存产品卡")} <ArrowRight size={15} />
+              <button
+                className="button primary"
+                type="button"
+                onClick={() =>
+                  addProductionBatchForIdea(selectedIdea.id, true)
+                }
+              >
+                {tr(language, "Save & add production batch", "保存并添加生产批次")}{" "}
+                <ArrowRight size={15} />
               </button>
             </div>
           </section>
@@ -4235,8 +4383,8 @@ export default function Home() {
                       <p>
                         {tr(
                           language,
-                          "Set the dessert, its Product-page specification, and the quantity for each batch.",
-                          "为每个批次选择甜点、产品页中的规格和生产数量。"
+                          "Every batch stays linked to its Product card, specification and recipe.",
+                          "每个批次都会与其产品卡、规格及配方保持关联。"
                         )}
                       </p>
                     </div>
@@ -4256,22 +4404,75 @@ export default function Home() {
                     <span />
                   </div>
                   <div className="production-list">
-                    {productionRows.map((row) => {
-                      const product = products[row.productId];
-                      const localizedProductName = productName(row.productId, language);
+                    {productionRows.length === 0 ? (
+                      <div className="production-empty">
+                        <PackageCheck size={24} />
+                        <strong>
+                          {tr(
+                            language,
+                            "No production batches yet",
+                            "尚无生产批次"
+                          )}
+                        </strong>
+                        <small>
+                          {tr(
+                            language,
+                            "Add a batch here, or send the active recipe from the Product page.",
+                            "可在此添加批次，或从“产品”页把当前配方加入生产。"
+                          )}
+                        </small>
+                      </div>
+                    ) : productionRows.map((row) => {
+                      const idea =
+                        ideas.find(
+                          (candidate) => candidate.id === row.ideaId
+                        ) ?? ideas[0];
+                      if (!idea) return null;
+                      const linkedDraft =
+                        productDrafts[idea.id] ?? emptyProductDraft();
+                      const linkedMaterials = linkedDraft.materials.filter(
+                        (material) => material.name.trim()
+                      );
+                      const localizedProductName = localizedIdeaName(
+                        idea,
+                        language
+                      );
+                      const productVariant = ideaVariant(idea);
+                      const artwork =
+                        renderResults[idea.id]?.src ||
+                        idea.image ||
+                        products[productVariant].image;
                       const productVariants =
-                        productionVariantsByProduct[row.productId];
+                        productionVariantsByIdea[idea.id] ?? [];
                       const selectedVariant =
                         productVariants.find(
                           (variant) => variant.id === row.variantId
                         ) ?? productVariants[0];
-                      const productOptions = (
-                        Object.keys(products) as ProductId[]
-                      ).map((productId) => ({
-                        value: productId,
-                        label: productName(productId, language),
-                        helper: products[productId].alias,
-                      }));
+                      const productOptions = ideas.map(
+                        (productIdea, index) => ({
+                          value: productIdea.id,
+                          label: localizedIdeaName(productIdea, language),
+                          helper: tr(
+                            language,
+                            `${productDrafts[
+                              productIdea.id
+                            ]?.materials.filter((material) =>
+                              material.name.trim()
+                            ).length ?? 0} materials · ${ideaAlias(
+                              productIdea,
+                              index
+                            )}`,
+                            `${productDrafts[
+                              productIdea.id
+                            ]?.materials.filter((material) =>
+                              material.name.trim()
+                            ).length ?? 0} 种材料 · ${ideaAlias(
+                              productIdea,
+                              index
+                            )}`
+                          ),
+                        })
+                      );
                       const specificationOptions = productVariants.map(
                         (productVariant, index) => ({
                           value: productVariant.id,
@@ -4290,7 +4491,7 @@ export default function Home() {
                         <article className="production-row" key={row.id}>
                           <WorkspaceImage
                             className="production-thumb"
-                            src={product.image}
+                            src={artwork}
                             alt={tr(
                               language,
                               `${localizedProductName} product rendering`,
@@ -4300,13 +4501,13 @@ export default function Home() {
                           <div className="production-field product-field">
                             <span>{tr(language, "Dessert", "甜点")}</span>
                             <PixelSelect
-                              value={row.productId}
+                              value={idea.id}
                               options={productOptions}
-                              onChange={(productId) => {
+                              onChange={(ideaId) => {
                                 const nextVariants =
-                                  productionVariantsByProduct[productId];
+                                  productionVariantsByIdea[ideaId] ?? [];
                                 updateProduction(row.id, {
-                                  productId,
+                                  ideaId,
                                   variantId: nextVariants[0]?.id ?? null,
                                 });
                               }}
@@ -4316,6 +4517,24 @@ export default function Home() {
                                 "甜点卡"
                               )}
                             />
+                            <small
+                              className={cn(
+                                "production-source",
+                                !linkedMaterials.length && "missing"
+                              )}
+                            >
+                              {linkedMaterials.length
+                                ? tr(
+                                    language,
+                                    `${linkedMaterials.length} recipe materials linked`,
+                                    `已关联 ${linkedMaterials.length} 种配方材料`
+                                  )
+                                : tr(
+                                    language,
+                                    "Recipe has no materials yet",
+                                    "该配方尚未添加材料"
+                                  )}
+                            </small>
                           </div>
                           <div className="production-field spec-field">
                             <span>
@@ -4392,73 +4611,156 @@ export default function Home() {
                       <p>
                         {tr(
                           language,
-                          "Aliases keep the sheet compact. Hover any alias for the full name.",
-                          "简称让表格保持紧凑；悬停即可查看完整名称。"
+                          "Amounts come from Product recipes and scale by specification × quantity. Hover an alias for the full name.",
+                          "用量读取自产品配方，并按“规格 × 数量”缩放；悬停简称可查看全名。"
                         )}
                       </p>
                     </div>
                   </div>
-                  <div className="cost-table-scroll">
-                    <table className="cost-table">
-                      <thead>
-                        <tr>
-                          <th>{tr(language, "Material", "材料")}</th>
-                          {(Object.keys(products) as Array<keyof typeof products>).map((id) => (
-                            <th key={id}>
-                              <button
-                                type="button"
-                                className="alias-tip"
-                                data-full-name={productName(id, language)}
-                                title={productName(id, language)}
-                                aria-label={`${products[id].alias} — ${productName(id, language)}`}
-                              >
-                                {products[id].alias}
-                              </button>
-                            </th>
-                          ))}
-                          <th>{tr(language, "Total", "总量")}</th>
-                          <th>{tr(language, "Unit price", "单价")}</th>
-                          <th>{tr(language, "Cost", "成本")}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {consolidateRows.map((row, index) => (
-                          <tr key={row.name}>
-                            <td>
-                              {tr(language, row.name, row.nameZh)}
-                              <small>{row.unit}</small>
-                            </td>
-                            <td>{row.amounts.moon.toFixed(2)}</td>
-                            <td>{row.amounts.berry.toFixed(2)}</td>
-                            <td>{row.amounts.garden.toFixed(2)}</td>
-                            <td><strong>{row.total.toFixed(2)}</strong></td>
-                            <td>
-                              <label className="price-field">
-                                $<input
-                                  type="number"
-                                  min="0"
-                                  step="0.1"
-                                  value={prices[index]}
-                                  onChange={(event) =>
-                                    setPrices((current) =>
-                                      current.map((price, priceIndex) =>
-                                        priceIndex === index ? Number(event.target.value) : price
-                                      )
-                                    )
-                                  }
-                                />
-                              </label>
-                            </td>
-                            <td><strong>${row.cost.toFixed(2)}</strong></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="cost-total">
-                    <span>{tr(language, "Total ingredient estimate", "材料成本估算")}</span>
-                    <strong>${consolidateRows.reduce((sum, row) => sum + row.cost, 0).toFixed(2)}</strong>
-                  </div>
+                  {consolidateRows.length === 0 ? (
+                    <button
+                      className="empty-state compact cost-empty"
+                      type="button"
+                      onClick={() => {
+                        const ideaId =
+                          productionRows[0]?.ideaId ?? selectedIdea.id;
+                        const idea =
+                          ideas.find((candidate) => candidate.id === ideaId) ??
+                          selectedIdea;
+                        activateIdea(idea);
+                        openStage("product");
+                      }}
+                    >
+                      <CakeSlice size={24} />
+                      <strong>
+                        {tr(
+                          language,
+                          productionRows.length
+                            ? "No recipe materials to consolidate"
+                            : "Add a production batch first",
+                          productionRows.length
+                            ? "没有可合并的配方材料"
+                            : "请先添加生产批次"
+                        )}
+                      </strong>
+                      <small>
+                        {tr(
+                          language,
+                          productionRows.length
+                            ? "Open the linked Product card and add material names, base amounts and units."
+                            : "Batches pull their dessert, specification and recipe directly from the Product page.",
+                          productionRows.length
+                            ? "打开关联的产品卡，添加材料名称、基础用量和单位。"
+                            : "批次会直接读取“产品”页中的甜点、规格与配方。"
+                        )}
+                      </small>
+                    </button>
+                  ) : (
+                    <>
+                      <div className="cost-table-scroll">
+                        <table className="cost-table">
+                          <thead>
+                            <tr>
+                              <th>{tr(language, "Material", "材料")}</th>
+                              {productionIdeas.map((idea, index) => {
+                                const alias = ideaAlias(idea, index);
+                                const fullName = localizedIdeaName(
+                                  idea,
+                                  language
+                                );
+                                return (
+                                  <th key={idea.id}>
+                                    <button
+                                      type="button"
+                                      className="alias-tip"
+                                      data-full-name={fullName}
+                                      title={fullName}
+                                      aria-label={`${alias} — ${fullName}`}
+                                    >
+                                      {alias}
+                                    </button>
+                                  </th>
+                                );
+                              })}
+                              <th>{tr(language, "Total", "总量")}</th>
+                              <th>{tr(language, "Unit price", "单价")}</th>
+                              <th>{tr(language, "Cost", "成本")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {consolidateRows.map((row) => (
+                              <tr key={row.key}>
+                                <td>
+                                  {row.name}
+                                  <small>{row.unit}</small>
+                                </td>
+                                {productionIdeas.map((idea) => (
+                                  <td key={idea.id}>
+                                    {formatMaterialAmount(
+                                      row.amounts[idea.id] ?? 0,
+                                      language
+                                    )}
+                                  </td>
+                                ))}
+                                <td>
+                                  <strong>
+                                    {formatMaterialAmount(row.total, language)}
+                                  </strong>
+                                </td>
+                                <td>
+                                  <label className="price-field">
+                                    <span aria-hidden="true">$</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={row.price || ""}
+                                      placeholder="0"
+                                      onChange={(event) => {
+                                        const nextPrice = Number(
+                                          event.target.value
+                                        );
+                                        setMaterialPrices((current) => ({
+                                          ...current,
+                                          [row.key]: Number.isFinite(nextPrice)
+                                            ? Math.max(0, nextPrice)
+                                            : 0,
+                                        }));
+                                      }}
+                                      aria-label={tr(
+                                        language,
+                                        `${row.name} price per ${row.unit}`,
+                                        `${row.name} 每 ${row.unit} 单价`
+                                      )}
+                                    />
+                                    <small>/ {row.unit}</small>
+                                  </label>
+                                </td>
+                                <td>
+                                  <strong>${row.cost.toFixed(2)}</strong>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="cost-total">
+                        <span>
+                          {tr(
+                            language,
+                            "Total ingredient estimate",
+                            "材料成本估算"
+                          )}
+                        </span>
+                        <strong>
+                          $
+                          {consolidateRows
+                            .reduce((sum, row) => sum + row.cost, 0)
+                            .toFixed(2)}
+                        </strong>
+                      </div>
+                    </>
+                  )}
                 </section>
               </div>
             )}

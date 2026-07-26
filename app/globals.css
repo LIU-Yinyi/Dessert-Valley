@@ -2485,6 +2485,34 @@ button.empty-state {
   isolation: isolate;
 }
 
+.production-empty {
+  min-height: 168px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  padding: 24px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--cream) 50%, var(--paper));
+  border: 2px dashed var(--line-dark);
+  text-align: center;
+}
+
+.production-empty svg {
+  color: var(--leaf);
+}
+
+.production-empty strong {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.production-empty small {
+  max-width: 380px;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .production-column-headings,
 .production-row {
   display: grid;
@@ -2548,6 +2576,22 @@ button.empty-state {
   border: 2px solid var(--line);
   outline: 0;
   font-size: 10px;
+}
+
+.production-source {
+  min-height: 16px;
+  display: block;
+  overflow: hidden;
+  color: var(--leaf-deep);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.production-source.missing {
+  color: var(--soil);
 }
 
 .pixel-select {
@@ -2783,6 +2827,16 @@ button.empty-state {
   border: 0;
   outline: 0;
   font-size: 10px;
+}
+
+.price-field > small {
+  color: var(--muted);
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.cost-empty {
+  color: var(--muted);
 }
 
 .cost-total {
