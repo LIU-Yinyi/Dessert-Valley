@@ -39,13 +39,14 @@ test("server renders the Dessert Valley product shell", async () => {
 });
 
 test("keeps the simplified multimodal workflow and responsive contracts", async () => {
-  const [page, css, layout, packageJson, renderRoute, planAdviceRoute] = await Promise.all([
+  const [page, css, layout, packageJson, renderRoute, planAdviceRoute, handbookRoute] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/render/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/plan-advice/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/handbook-render/route.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /type ReferenceKind = "text" \| "audio" \| "image" \| "canvas"/);
@@ -61,6 +62,16 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /fetch\("\/api\/plan-advice"/);
   assert.match(page, /material-aware steps/);
   assert.match(page, /planAdviceErrors/);
+  assert.match(page, /fetch\("\/api\/handbook-render"/);
+  assert.match(page, /handbookStylePrompt/);
+  assert.match(page, /handbookReferenceImage/);
+  assert.match(page, /selectedHandbookIdeas/);
+  assert.match(page, /Generate AI handbook/);
+  assert.match(page, /localizedIdeaName\(idea, language\)/);
+  assert.match(page, /className="handbook-sheet"/);
+  assert.doesNotMatch(page, /selectedHandbookRows|selectedMenuRows/);
+  assert.doesNotMatch(page, /Every style batch is its own configurable card/);
+  assert.doesNotMatch(page, /style cards selected/);
   assert.doesNotMatch(page, /Muse added a three-step starting plan/);
   assert.doesNotMatch(page, /title: tr\(language, "Prepare the base"/);
   assert.match(page, /Add variants/);
@@ -110,6 +121,10 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /\.render-error/);
   assert.match(css, /\.plan-advice-status/);
   assert.match(css, /\.plan-advice-error/);
+  assert.match(css, /\.handbook-generator/);
+  assert.match(css, /\.handbook-sheet/);
+  assert.match(css, /\.handbook-candidate-description/);
+  assert.match(css, /\.handbook-reference-upload/);
   assert.match(css, /\.idea-card-actions/);
   assert.match(css, /\.idea-tag-preview/);
   assert.match(css, /\.button\.danger/);
@@ -141,4 +156,13 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(planAdviceRoute, /material-usage table/);
   assert.match(planAdviceRoute, /Existing user-authored steps are present/);
   assert.doesNotMatch(planAdviceRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
+
+  assert.match(handbookRoute, /gpt-image-2/);
+  assert.match(handbookRoute, /OPENAI_API_KEY/);
+  assert.match(handbookRoute, /\/v1\/images\/edits/);
+  assert.match(handbookRoute, /form\.append\(\s*"image\[\]"/);
+  assert.match(handbookRoute, /buildHandbookPrompt/);
+  assert.match(handbookRoute, /Do not render any words, letters, numbers/);
+  assert.match(handbookRoute, /1024x1536/);
+  assert.doesNotMatch(handbookRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
 });

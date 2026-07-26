@@ -103,6 +103,13 @@ type RenderResult = {
   influences: ReferenceKind[];
 };
 
+type HandbookResult = {
+  src: string;
+  signature: string;
+  dessertCount: number;
+  visualInputCount: number;
+};
+
 type SizeVariant = {
   id: number;
   name: string;
@@ -191,6 +198,15 @@ const productNames: Record<Language, Record<ProductId, string>> = {
 
 function productName(productId: ProductId, language: Language) {
   return productNames[language][productId];
+}
+
+function localizedIdeaName(idea: IdeaCard, language: Language) {
+  const matchingProduct = (
+    Object.entries(products) as Array<[ProductId, (typeof products)[ProductId]]>
+  ).find(([, product]) => product.name === idea.title);
+  return matchingProduct
+    ? productName(matchingProduct[0], language)
+    : idea.title;
 }
 
 const productionMaterials = [
@@ -431,6 +447,73 @@ function downloadBlob(blob: Blob, filename: string) {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function escapeHtml(value: string) {
+  return value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;",
+      })[character] ?? character
+  );
+}
+
+function drawImageCover(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  width: number,
+  height: number
+) {
+  const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+  const renderedWidth = image.naturalWidth * scale;
+  const renderedHeight = image.naturalHeight * scale;
+  context.drawImage(
+    image,
+    (width - renderedWidth) / 2,
+    (height - renderedHeight) / 2,
+    renderedWidth,
+    renderedHeight
+  );
+}
+
+function wrapCanvasText(
+  context: CanvasRenderingContext2D,
+  value: string,
+  maximumWidth: number,
+  maximumLines = 3
+) {
+  const tokens = value.includes(" ")
+    ? value.split(/\s+/)
+    : Array.from(value);
+  const separator = value.includes(" ") ? " " : "";
+  const lines: string[] = [];
+  let current = "";
+  tokens.forEach((token) => {
+    const candidate = current ? `${current}${separator}${token}` : token;
+    if (context.measureText(candidate).width <= maximumWidth || !current) {
+      current = candidate;
+      return;
+    }
+    lines.push(current);
+    current = token;
+  });
+  if (current) lines.push(current);
+  if (lines.length <= maximumLines) return lines;
+  const visible = lines.slice(0, maximumLines);
+  let lastLine = visible[maximumLines - 1];
+  while (
+    lastLine &&
+    context.measureText(`${lastLine}…`).width > maximumWidth
+  ) {
+    lastLine = lastLine.slice(0, -1);
+  }
+  visible[maximumLines - 1] = `${lastLine}…`;
+  return visible;
 }
 
 function useDialogFocus(onClose: () => void) {
@@ -1358,10 +1441,17 @@ export default function Home() {
     { id: 3, productId: "garden", count: 4, sizeValue: "8", sizeUnit: "cm", style: "Chamomile moss" },
   ]);
   const [prices, setPrices] = useState([11.8, 28.5, 18.2, 31.4, 2.4]);
-  const [selectedMenuRows, setSelectedMenuRows] = useState<number[]>([1, 2, 3]);
+  const [selectedHandbookIdeaIds, setSelectedHandbookIdeaIds] = useState<number[]>([1, 2, 3]);
+  const [handbookStylePrompt, setHandbookStylePrompt] = useState("");
+  const [handbookReferenceImage, setHandbookReferenceImage] = useState("");
+  const [handbookReferenceName, setHandbookReferenceName] = useState("");
+  const [handbookResult, setHandbookResult] = useState<HandbookResult | null>(null);
+  const [handbookGenerating, setHandbookGenerating] = useState(false);
+  const [handbookError, setHandbookError] = useState("");
   const [toast, setToast] = useState("");
   const importRef = useRef<HTMLInputElement | null>(null);
   const ideaSelectorRef = useRef<HTMLDivElement | null>(null);
+  const handbookReferenceRef = useRef<HTMLInputElement | null>(null);
 
   const selectedIdea =
     ideas.find((idea) => idea.id === selectedIdeaId) ?? ideas[0] ?? seedIdeas[0];
@@ -1392,6 +1482,34 @@ export default function Home() {
         ? 1
         : sizeVariantScale(sizeVariant, sizeVariants[0]),
   }));
+  const selectedHandbookIdeas = ideas.filter((idea) =>
+    selectedHandbookIdeaIds.includes(idea.id)
+  );
+  const currentHandbookSignature = hashText(
+    [
+      language,
+      handbookStylePrompt,
+      handbookReferenceName,
+      handbookReferenceImage
+        ? `${handbookReferenceImage.length}:${handbookReferenceImage.slice(0, 36)}:${handbookReferenceImage.slice(-36)}`
+        : "",
+      ...selectedHandbookIdeas.map((idea) => {
+        const artwork = renderResults[idea.id]?.src || idea.image;
+        return [
+          idea.id,
+          idea.title,
+          idea.prompt,
+          idea.tags.join("|"),
+          artwork
+            ? `${artwork.length}:${artwork.slice(0, 36)}:${artwork.slice(-36)}`
+            : "",
+        ].join("::");
+      }),
+    ].join("||")
+  );
+  const handbookIsStale =
+    Boolean(handbookResult) &&
+    handbookResult?.signature !== currentHandbookSignature;
   const stageIndex = stages.findIndex((item) => item.id === stage);
 
   const setActiveReferences = (update: StateUpdate<DesignReference[]>) =>
@@ -1653,6 +1771,9 @@ export default function Home() {
       delete next[removedId];
       return next;
     });
+    setSelectedHandbookIdeaIds((current) =>
+      current.filter((ideaId) => ideaId !== removedId)
+    );
     if (selectedIdeaId === removedId) {
       const nextIdea = remainingIdeas[0];
       setSelectedIdeaId(nextIdea.id);
@@ -2015,7 +2136,6 @@ export default function Home() {
         style: tr(language, "New style", "新样式"),
       },
     ]);
-    setSelectedMenuRows((current) => [...current, nextId]);
   };
 
   const countsByProduct = useMemo(
@@ -2074,6 +2194,10 @@ export default function Home() {
       referencePackages: exportableReferences,
       productDrafts: exportableDrafts,
       productionRows,
+      handbook: {
+        selectedIdeaIds: selectedHandbookIdeaIds,
+        stylePrompt: handbookStylePrompt,
+      },
     };
     downloadBlob(
       new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
@@ -2095,6 +2219,14 @@ export default function Home() {
       if (payload.productDrafts && typeof payload.productDrafts === "object") {
         setProductDrafts(payload.productDrafts);
       }
+      if (payload.handbook && typeof payload.handbook === "object") {
+        if (Array.isArray(payload.handbook.selectedIdeaIds)) {
+          setSelectedHandbookIdeaIds(payload.handbook.selectedIdeaIds);
+        }
+        if (typeof payload.handbook.stylePrompt === "string") {
+          setHandbookStylePrompt(payload.handbook.stylePrompt);
+        }
+      }
       notify(tr(language, "Card pack imported", "卡片包已导入"));
     } catch {
       notify(
@@ -2108,50 +2240,287 @@ export default function Home() {
     event.target.value = "";
   };
 
-  const selectedHandbookRows = productionRows.filter((row) =>
-    selectedMenuRows.includes(row.id)
-  );
+  const handleHandbookReference = async (
+    event: ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      setHandbookReferenceImage(await readFileAsDataUrl(file));
+      setHandbookReferenceName(file.name);
+      setHandbookError("");
+    } catch {
+      notify(
+        tr(
+          language,
+          "The reference image could not be read.",
+          "无法读取该参考图片。"
+        )
+      );
+    }
+    event.target.value = "";
+  };
+
+  const generateHandbook = async () => {
+    if (handbookGenerating) return;
+    if (!selectedHandbookIdeas.length) {
+      notify(
+        tr(
+          language,
+          "Choose at least one dessert card for the handbook.",
+          "请至少选择一张甜点卡片。"
+        )
+      );
+      return;
+    }
+
+    const languageSnapshot = language;
+    const signatureSnapshot = currentHandbookSignature;
+    const selectedSnapshot = [...selectedHandbookIdeas];
+    const stylePromptSnapshot = handbookStylePrompt;
+    const styleReferenceSnapshot = handbookReferenceImage;
+    const styleReferenceNameSnapshot = handbookReferenceName;
+    const maximumDessertVisuals = styleReferenceSnapshot ? 5 : 6;
+
+    setHandbookGenerating(true);
+    setHandbookError("");
+    try {
+      let normalizedStyleReference: string | undefined;
+      if (styleReferenceSnapshot) {
+        try {
+          normalizedStyleReference = await normalizeReferenceImage(
+            styleReferenceSnapshot
+          );
+        } catch {
+          throw new Error("reference_image_failed");
+        }
+      }
+
+      const desserts = await Promise.all(
+        selectedSnapshot.map(async (idea, index) => {
+          const source = renderResults[idea.id]?.src || idea.image;
+          let asset: string | undefined;
+          if (source && index < maximumDessertVisuals) {
+            try {
+              asset = await normalizeReferenceImage(source);
+            } catch {
+              // A written dessert description still keeps this card useful.
+            }
+          }
+          return {
+            title: localizedIdeaName(idea, languageSnapshot),
+            description: idea.prompt,
+            tags: idea.tags,
+            asset,
+          };
+        })
+      );
+
+      const response = await fetch("/api/handbook-render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          language: languageSnapshot,
+          stylePrompt: stylePromptSnapshot,
+          styleReference: normalizedStyleReference
+            ? {
+                name:
+                  styleReferenceNameSnapshot ||
+                  tr(
+                    languageSnapshot,
+                    "Uploaded style reference",
+                    "上传的风格参考"
+                  ),
+                asset: normalizedStyleReference,
+              }
+            : undefined,
+          desserts,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            image?: string;
+            dessertCount?: number;
+            visualInputCount?: number;
+            error?: { code?: string; message?: string };
+          }
+        | null;
+      if (!response.ok || !payload?.image) {
+        throw new Error(payload?.error?.code || "generation_failed");
+      }
+      setHandbookResult({
+        src: payload.image,
+        signature: signatureSnapshot,
+        dessertCount: payload.dessertCount ?? selectedSnapshot.length,
+        visualInputCount: payload.visualInputCount ?? 0,
+      });
+      notify(
+        tr(
+          languageSnapshot,
+          "AI handbook artwork is ready",
+          "AI 手册视觉已生成"
+        )
+      );
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "generation_failed";
+      const message =
+        code === "not_configured"
+          ? tr(
+              languageSnapshot,
+              "AI handbook generation is not configured.",
+              "AI 手册生成功能尚未配置。"
+            )
+          : code === "rate_limit"
+            ? tr(
+                languageSnapshot,
+                "The handbook studio is busy. Try again in a moment.",
+                "手册工作室正忙，请稍后再试。"
+              )
+            : code === "moderation_blocked"
+              ? tr(
+                  languageSnapshot,
+                  "Revise the style prompt or reference image, then try again.",
+                  "请调整风格提示词或参考图片后重试。"
+                )
+              : code === "request_too_large"
+                ? tr(
+                    languageSnapshot,
+                    "The reference package is too large. Use a smaller image.",
+                    "参考包过大，请使用更小的图片。"
+                  )
+                : code === "reference_image_failed"
+                  ? tr(
+                      languageSnapshot,
+                      "The style image could not be prepared. Try PNG, JPG, or WEBP.",
+                      "无法处理风格图片，请改用 PNG、JPG 或 WEBP。"
+                    )
+                  : tr(
+                      languageSnapshot,
+                      "The AI could not generate this handbook. Please try again.",
+                      "AI 暂时无法生成该手册，请重试。"
+                    );
+      setHandbookError(message);
+      notify(message);
+    } finally {
+      setHandbookGenerating(false);
+    }
+  };
 
   const exportHandbookHTML = () => {
-    const cards = selectedHandbookRows
+    if (!selectedHandbookIdeas.length) {
+      notify(
+        tr(
+          language,
+          "Choose at least one dessert card before exporting.",
+          "请至少选择一张甜点卡片后再导出。"
+        )
+      );
+      return;
+    }
+    const cards = selectedHandbookIdeas
       .map(
-        (row) =>
-          `<article><small>${products[row.productId].alias} · ${row.sizeValue}${row.sizeUnit}</small><h2>${productName(row.productId, language)}</h2><p>${row.style}</p></article>`
+        (idea, index) =>
+          `<article><span>${String(index + 1).padStart(2, "0")}</span><div><h2>${escapeHtml(
+            localizedIdeaName(idea, language)
+          )}</h2><p>${escapeHtml(idea.prompt)}</p></div></article>`
       )
       .join("");
     const handbookTitle = tr(language, "Dessert Handbook", "甜点手册");
-    const html = `<!doctype html><html lang="${language === "zh" ? "zh-CN" : "en"}"><head><meta charset="utf-8"><title>Dessert Valley — ${handbookTitle}</title><style>body{font-family:system-ui,sans-serif;background:#f4dfa8;color:#2f2926;padding:48px}main{max-width:760px;margin:auto}header{text-align:center;border-bottom:3px solid #70452e;padding-bottom:28px}article{background:#fff0bd;border:2px solid #a86f3d;padding:24px;margin:18px 0;box-shadow:5px 5px 0 rgba(74,47,36,.18)}small{letter-spacing:.08em;text-transform:uppercase;color:#3f713d}h1,h2{font-family:monospace}h2{margin:8px 0}</style></head><body><main><header><p>DESSERT VALLEY</p><h1>${handbookTitle}</h1></header>${cards}</main></body></html>`;
+    const artwork = handbookResult?.src
+      ? `<img class="artwork" src="${handbookResult.src}" alt="">`
+      : "";
+    const html = `<!doctype html><html lang="${
+      language === "zh" ? "zh-CN" : "en"
+    }"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Dessert Valley — ${escapeHtml(
+      handbookTitle
+    )}</title><style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box}body{margin:0;background:#d9a441;color:#2f2926;font-family:ui-serif,Georgia,"Songti SC",serif}.page{position:relative;width:210mm;min-height:297mm;margin:auto;overflow:hidden;background:#f4dfa8}.artwork{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.paper{position:relative;z-index:1;min-height:267mm;margin:15mm;padding:16mm;background:rgba(255,240,189,.91);border:2px solid #70452e;box-shadow:inset 0 0 0 5px rgba(244,223,168,.86)}header{padding-bottom:12mm;border-bottom:2px solid #70452e}header small{font:700 9pt ui-monospace,monospace;letter-spacing:.18em;color:#3f713d}h1{margin:4mm 0 0;font-size:28pt}article{display:grid;grid-template-columns:10mm 1fr;gap:5mm;padding:7mm 0;border-bottom:1px solid rgba(112,69,46,.45)}article>span{font:700 9pt ui-monospace,monospace;color:#3f713d}h2{margin:0 0 2mm;font-size:15pt}article p{margin:0;font:10pt/1.55 system-ui,sans-serif;color:#4a4038}@media(max-width:800px){.page{width:100%;min-height:100vh}.paper{min-height:calc(100vh - 32px);margin:16px;padding:28px}}@media print{body{background:white}.page{margin:0}}</style></head><body><main class="page">${artwork}<section class="paper"><header><small>DESSERT VALLEY</small><h1>${escapeHtml(
+      handbookTitle
+    )}</h1></header>${cards}</section></main></body></html>`;
     downloadBlob(new Blob([html], { type: "text/html" }), "dessert-valley-handbook.html");
     notify(tr(language, "HTML handbook exported", "HTML 手册已导出"));
   };
 
-  const exportHandbookPNG = () => {
+  const exportHandbookPNG = async () => {
+    if (!selectedHandbookIdeas.length) {
+      notify(
+        tr(
+          language,
+          "Choose at least one dessert card before exporting.",
+          "请至少选择一张甜点卡片后再导出。"
+        )
+      );
+      return;
+    }
     const canvas = document.createElement("canvas");
     canvas.width = 1200;
-    canvas.height = 1500;
+    canvas.height = Math.max(1800, 520 + selectedHandbookIdeas.length * 190);
     const context = canvas.getContext("2d");
     if (!context) return;
-    context.fillStyle = "#f4ead3";
-    context.fillRect(0, 0, 1200, 1500);
-    context.strokeStyle = "#8a6a3d";
-    context.lineWidth = 6;
-    context.strokeRect(70, 70, 1060, 1360);
-    context.fillStyle = "#52683d";
-    context.textAlign = "center";
-    context.font = "700 30px monospace";
-    context.fillText("DESSERT VALLEY", 600, 150);
-    context.fillStyle = "#443622";
-    context.font = "64px Georgia";
-    context.fillText(tr(language, "Dessert Handbook", "甜点手册"), 600, 245);
-    selectedHandbookRows.slice(0, 6).forEach((row, index) => {
-      const y = 370 + index * 165;
-      context.font = "34px Georgia";
-      context.fillText(productName(row.productId, language), 600, y);
-      context.font = "22px monospace";
-      context.fillText(`${row.style} · ${row.sizeValue}${row.sizeUnit}`, 600, y + 50);
+    context.fillStyle = "#e7c971";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    if (handbookResult?.src) {
+      try {
+        const artwork = await loadCanvasImage(handbookResult.src);
+        drawImageCover(context, artwork, canvas.width, canvas.height);
+      } catch {
+        // The typographic handbook remains exportable without the artwork.
+      }
+    }
+    context.fillStyle = "rgba(255, 240, 189, .91)";
+    context.fillRect(68, 68, canvas.width - 136, canvas.height - 136);
+    context.strokeStyle = "#70452e";
+    context.lineWidth = 5;
+    context.strokeRect(68, 68, canvas.width - 136, canvas.height - 136);
+    context.strokeStyle = "rgba(112, 69, 46, .45)";
+    context.lineWidth = 2;
+    context.strokeRect(82, 82, canvas.width - 164, canvas.height - 164);
+    context.textAlign = "left";
+    context.fillStyle = "#3f713d";
+    context.font = "700 25px ui-monospace, monospace";
+    context.fillText("DESSERT VALLEY", 132, 160);
+    context.fillStyle = "#2f2926";
+    context.font = '700 62px Georgia, "Songti SC", serif';
+    context.fillText(tr(language, "Dessert Handbook", "甜点手册"), 132, 242);
+    context.fillStyle = "#70452e";
+    context.fillRect(132, 286, canvas.width - 264, 3);
+
+    let y = 370;
+    selectedHandbookIdeas.forEach((idea, index) => {
+      context.fillStyle = "#3f713d";
+      context.font = "700 22px ui-monospace, monospace";
+      context.fillText(String(index + 1).padStart(2, "0"), 132, y + 6);
+      context.fillStyle = "#2f2926";
+      context.font = '700 34px Georgia, "Songti SC", serif';
+      const nameLines = wrapCanvasText(
+        context,
+        localizedIdeaName(idea, language),
+        820,
+        2
+      );
+      nameLines.forEach((line, lineIndex) => {
+        context.fillText(line, 210, y + lineIndex * 42);
+      });
+      const descriptionY = y + nameLines.length * 42 + 12;
+      context.fillStyle = "#4a4038";
+      context.font = '22px system-ui, "PingFang SC", sans-serif';
+      const descriptionLines = wrapCanvasText(
+        context,
+        idea.prompt,
+        820,
+        3
+      );
+      descriptionLines.forEach((line, lineIndex) => {
+        context.fillText(line, 210, descriptionY + lineIndex * 31);
+      });
+      y += Math.max(175, nameLines.length * 42 + descriptionLines.length * 31 + 58);
+      context.fillStyle = "rgba(112, 69, 46, .28)";
+      context.fillRect(210, y - 28, 820, 2);
     });
-    canvas.toBlob((blob) => blob && downloadBlob(blob, "dessert-valley-handbook.png"));
-    notify(tr(language, "Image handbook exported", "图片手册已导出"));
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      downloadBlob(blob, "dessert-valley-handbook.png");
+      notify(tr(language, "Image handbook exported", "图片手册已导出"));
+    });
   };
 
   const sendAgentMessage = () => {
@@ -3243,11 +3612,11 @@ export default function Home() {
               </span>
               <h1>{tr(language, "Plan the bake. Share the story.", "规划烘焙，分享故事。")}</h1>
               <p>
-                {tr(
-                  language,
-                  "Scale production with confidence, then turn selected styles into a keepsake table handbook.",
-                  "轻松安排生产数量，再把选中的甜点风格制作成可珍藏的桌面手册。"
-                )}
+                  {tr(
+                    language,
+                    "Scale production with confidence, then turn selected dessert stories into a keepsake table handbook.",
+                    "轻松安排生产数量，再把选中的甜点故事制作成可珍藏的桌面手册。"
+                  )}
               </p>
             </div>
 
@@ -3486,106 +3855,339 @@ export default function Home() {
 
             {bakeMode === "diner" && (
               <div className="diner-layout">
-                <section className="handbook-gallery">
+                <section className="handbook-gallery pixel-panel">
                   <div className="section-heading inline">
                     <div>
-                      <h2>{tr(language, "Handbook cards", "手册卡片")}</h2>
+                      <h2>{tr(language, "Handbook gallery", "手册候选画廊")}</h2>
                       <p>
                         {tr(
                           language,
-                          "Every style batch is its own configurable card.",
-                          "每个风格批次都是一张可独立配置的卡片。"
+                          "Choose the dessert stories that belong in this edition.",
+                          "选择要收录进本期手册的甜点故事。"
                         )}
                       </p>
                     </div>
+                    <span className="selection-count">
+                      {selectedHandbookIdeas.length}/{ideas.length}
+                    </span>
                   </div>
                   <div className="handbook-card-grid">
-                    {productionRows.map((row) => {
-                      const product = products[row.productId];
-                      const selected = selectedMenuRows.includes(row.id);
+                    {ideas.map((idea) => {
+                      const selected = selectedHandbookIdeaIds.includes(idea.id);
+                      const artwork = renderResults[idea.id]?.src || idea.image;
+                      const displayName = localizedIdeaName(idea, language);
                       return (
-                        <article className={cn("handbook-card pixel-panel", selected && "selected")} key={row.id}>
-                          <button
-                            className="card-select"
-                            type="button"
-                            onClick={() =>
-                              setSelectedMenuRows((current) =>
-                                current.includes(row.id)
-                                  ? current.filter((id) => id !== row.id)
-                                  : [...current, row.id]
-                              )
-                            }
-                            aria-label={tr(
-                              language,
-                              `${selected ? "Remove" : "Add"} ${productName(row.productId, language)} from handbook`,
-                              `${selected ? "从手册移除" : "添加到手册"} ${productName(row.productId, language)}`
-                            )}
-                          >
-                            {selected && <Check size={13} />}
-                          </button>
-                          <img src={product.image} alt={`${product.name}, ${row.style}`} />
-                          <div>
-                            <span>{product.alias}</span>
-                            <h3>{productName(row.productId, language)}</h3>
-                            <label className="inline-edit">
-                              {tr(language, "Style", "风格")}
-                              <input
-                                value={row.style}
-                                onChange={(event) => updateProduction(row.id, { style: event.target.value })}
-                              />
-                            </label>
-                            <label className="inline-edit size">
-                              {tr(language, "Size", "尺寸")}
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.1"
-                                value={row.sizeValue}
-                                onChange={(event) => updateProduction(row.id, { sizeValue: event.target.value })}
-                              />
-                              <select
-                                value={row.sizeUnit}
-                                onChange={(event) => updateProduction(row.id, { sizeUnit: event.target.value })}
-                              >
-                                <option>cm</option><option>mm</option><option>in</option><option>g</option>
-                              </select>
-                            </label>
-                          </div>
-                        </article>
+                        <button
+                          className={cn(
+                            "handbook-card pixel-panel",
+                            selected && "selected"
+                          )}
+                          type="button"
+                          key={idea.id}
+                          onClick={() =>
+                            setSelectedHandbookIdeaIds((current) =>
+                              current.includes(idea.id)
+                                ? current.filter((id) => id !== idea.id)
+                                : [...current, idea.id]
+                            )
+                          }
+                          aria-pressed={selected}
+                          aria-label={tr(
+                            language,
+                            `${selected ? "Remove" : "Add"} ${displayName} ${
+                              selected ? "from" : "to"
+                            } the handbook`,
+                            `${selected ? "从手册移除" : "添加到手册"} ${displayName}`
+                          )}
+                        >
+                          <span className="card-select" aria-hidden="true">
+                            {selected ? <Check size={13} /> : <Plus size={13} />}
+                          </span>
+                          {artwork ? (
+                            <img
+                              src={artwork}
+                              alt={tr(
+                                language,
+                                `${displayName} dessert rendering`,
+                                `${displayName} 甜点渲染图`
+                              )}
+                            />
+                          ) : (
+                            <span className="handbook-card-placeholder">
+                              <ImagePlus size={22} />
+                            </span>
+                          )}
+                          <span className="handbook-card-copy">
+                            <small>
+                              {tr(language, "Dessert story", "甜点故事")}
+                            </small>
+                            <h3>{displayName}</h3>
+                            <span className="handbook-candidate-description">
+                              {idea.prompt}
+                            </span>
+                          </span>
+                        </button>
                       );
                     })}
                   </div>
                 </section>
-                <aside className="export-panel pixel-panel">
+                <aside
+                  className="export-panel pixel-panel"
+                  aria-busy={handbookGenerating}
+                >
                   <span className="panel-icon"><BookOpen size={18} /></span>
                   <h2>{tr(language, "Dessert handbook", "甜点手册")}</h2>
                   <p>
                     {tr(
                       language,
-                      `${selectedHandbookRows.length} style cards selected.`,
-                      `已选择 ${selectedHandbookRows.length} 张风格卡片。`
+                      `${selectedHandbookIdeas.length} dessert cards selected.`,
+                      `已选择 ${selectedHandbookIdeas.length} 张甜点卡片。`
                     )}
                   </p>
-                  <div className="mini-menu-preview">
-                    <Sprout size={22} />
-                    <small>DESSERT VALLEY</small>
-                    <strong>
-                      {tr(language, "Today’s", "今日")}
-                      <br />
-                      {tr(language, "Dessert Garden", "甜点花园")}
-                    </strong>
-                    <span>
-                      {selectedHandbookRows.map((row) => products[row.productId].alias).join(" · ") ||
-                        tr(language, "Choose cards", "选择卡片")}
-                    </span>
+
+                  <div className="handbook-generator">
+                    <label className="handbook-prompt-label">
+                      <span>
+                        <WandSparkles size={14} />
+                        {tr(
+                          language,
+                          "Handbook style prompt",
+                          "手册风格提示词"
+                        )}
+                      </span>
+                      <textarea
+                        value={handbookStylePrompt}
+                        onChange={(event) =>
+                          setHandbookStylePrompt(event.target.value)
+                        }
+                        maxLength={3000}
+                        placeholder={tr(
+                          language,
+                          "e.g. French tea salon, ivory linen, restrained botanical border…",
+                          "例如：法式茶室、象牙色亚麻纸、克制的植物边框……"
+                        )}
+                      />
+                    </label>
+                    <div className="handbook-style-presets">
+                      <span>{tr(language, "Quick styles", "快捷风格")}</span>
+                      {[
+                        {
+                          label: tr(language, "French salon", "法式沙龙"),
+                          prompt: tr(
+                            language,
+                            "French salon sophistication, ivory linen paper, fine plum rules, understated gold botanical details.",
+                            "法式沙龙的精致感，象牙色亚麻纸、细梅子色线条与克制的金色植物细节。"
+                          ),
+                        },
+                        {
+                          label: tr(language, "Village harvest", "田园丰收"),
+                          prompt: tr(
+                            language,
+                            "Cozy village harvest journal, warm handmade paper, tiny wildflowers, berries and soft countryside colors.",
+                            "温暖的田园丰收手记，手工纸张、小野花、浆果与柔和乡村色彩。"
+                          ),
+                        },
+                        {
+                          label: tr(language, "Tea garden", "茶园雅集"),
+                          prompt: tr(
+                            language,
+                            "Quiet botanical tea garden, jade green accents, pressed leaves, generous breathing room and refined menu balance.",
+                            "安静的植物茶园，玉绿色点缀、压花叶片、充足留白与雅致菜单平衡。"
+                          ),
+                        },
+                      ].map((preset) => (
+                        <button
+                          type="button"
+                          key={preset.label}
+                          onClick={() => setHandbookStylePrompt(preset.prompt)}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                    {handbookReferenceImage ? (
+                      <div className="handbook-reference-attached">
+                        <img src={handbookReferenceImage} alt="" />
+                        <span>
+                          <strong>
+                            {tr(language, "Style reference", "风格参考")}
+                          </strong>
+                          <small>{handbookReferenceName}</small>
+                        </span>
+                        <button
+                          className="square-button mini"
+                          type="button"
+                          onClick={() => {
+                            setHandbookReferenceImage("");
+                            setHandbookReferenceName("");
+                          }}
+                          aria-label={tr(
+                            language,
+                            "Remove style reference",
+                            "移除风格参考"
+                          )}
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="handbook-reference-upload"
+                        type="button"
+                        onClick={() => handbookReferenceRef.current?.click()}
+                      >
+                        <ImagePlus size={15} />
+                        <span>
+                          <strong>
+                            {tr(
+                              language,
+                              "Add reference image",
+                              "添加参考图片"
+                            )}
+                          </strong>
+                          <small>PNG · JPG · WEBP</small>
+                        </span>
+                      </button>
+                    )}
+                    <input
+                      ref={handbookReferenceRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={handleHandbookReference}
+                    />
+                    <button
+                      className="button primary full"
+                      type="button"
+                      onClick={generateHandbook}
+                      disabled={
+                        handbookGenerating || !selectedHandbookIdeas.length
+                      }
+                    >
+                      {handbookGenerating ? (
+                        <LoaderCircle className="spin" size={16} />
+                      ) : (
+                        <Sparkles size={16} />
+                      )}
+                      {handbookGenerating
+                        ? tr(
+                            language,
+                            "Generating handbook…",
+                            "正在生成手册……"
+                          )
+                        : handbookIsStale
+                          ? tr(
+                              language,
+                              "Update AI handbook",
+                              "更新 AI 手册"
+                            )
+                          : tr(
+                              language,
+                              "Generate AI handbook",
+                              "生成 AI 手册"
+                            )}
+                    </button>
                   </div>
-                  <button className="button secondary full" type="button" onClick={exportHandbookPNG}>
+
+                  {handbookGenerating && (
+                    <div className="handbook-generation-status" role="status">
+                      <LoaderCircle className="spin" size={15} />
+                      <span>
+                        {tr(
+                          language,
+                          "Composing selected desserts and style references…",
+                          "正在融合所选甜点与风格参考……"
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {handbookError && !handbookGenerating && (
+                    <div className="render-error handbook-error" role="alert">
+                      <Bot size={15} />
+                      <span>{handbookError}</span>
+                    </div>
+                  )}
+
+                  <div className="handbook-sheet">
+                    {handbookResult && (
+                      <img
+                        className="handbook-artwork"
+                        src={handbookResult.src}
+                        alt={tr(
+                          language,
+                          "AI-generated handbook artwork",
+                          "AI 生成的手册视觉"
+                        )}
+                      />
+                    )}
+                    <div className="handbook-sheet-content">
+                      <Sprout size={20} />
+                      <small>DESSERT VALLEY</small>
+                      <strong>
+                        {tr(language, "Today’s Dessert Garden", "今日甜点花园")}
+                      </strong>
+                      {selectedHandbookIdeas.length ? (
+                        <div
+                          className={cn(
+                            "handbook-preview-list",
+                            selectedHandbookIdeas.length > 4 && "dense"
+                          )}
+                        >
+                          {selectedHandbookIdeas.map((idea, index) => (
+                            <div key={idea.id}>
+                              <span>
+                                {String(index + 1).padStart(2, "0")}
+                              </span>
+                              <p>
+                                <b>{localizedIdeaName(idea, language)}</b>
+                                <small>{idea.prompt}</small>
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="handbook-empty-selection">
+                          {tr(language, "Choose dessert cards", "请选择甜点卡片")}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {handbookResult && (
+                    <p className="handbook-result-note">
+                      {handbookIsStale
+                        ? tr(
+                            language,
+                            "Selection or style changed—update the artwork before final export.",
+                            "选卡或风格已改变，最终导出前请更新视觉。"
+                          )
+                        : tr(
+                            language,
+                            `AI artwork reflects ${handbookResult.dessertCount} desserts and ${handbookResult.visualInputCount} visual references.`,
+                            `AI 视觉已融合 ${handbookResult.dessertCount} 款甜点与 ${handbookResult.visualInputCount} 张视觉参考。`
+                          )}
+                    </p>
+                  )}
+                  <button
+                    className="button secondary full"
+                    type="button"
+                    onClick={exportHandbookPNG}
+                    disabled={!selectedHandbookIdeas.length}
+                  >
                     <FileImage size={15} /> {tr(language, "Export image", "导出图片")}
                   </button>
-                  <button className="button secondary full" type="button" onClick={exportHandbookHTML}>
+                  <button
+                    className="button secondary full"
+                    type="button"
+                    onClick={exportHandbookHTML}
+                    disabled={!selectedHandbookIdeas.length}
+                  >
                     <FileCode2 size={15} /> {tr(language, "Export HTML", "导出 HTML")}
                   </button>
-                  <button className="button primary full" type="button" onClick={() => window.print()}>
+                  <button
+                    className="button primary full"
+                    type="button"
+                    onClick={() => window.print()}
+                    disabled={!selectedHandbookIdeas.length}
+                  >
                     <FileText size={15} /> {tr(language, "Export PDF", "导出 PDF")}
                   </button>
                 </aside>

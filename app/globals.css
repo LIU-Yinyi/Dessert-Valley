@@ -2687,9 +2687,26 @@ button.empty-state {
 
 .diner-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) 380px;
   align-items: start;
   gap: 24px;
+}
+
+.handbook-gallery {
+  min-width: 0;
+}
+
+.selection-count {
+  flex: 0 0 auto;
+  min-width: 48px;
+  padding: 7px 9px;
+  color: var(--leaf-deep);
+  background: var(--leaf-soft);
+  border: 2px solid var(--leaf);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
 }
 
 .handbook-card-grid {
@@ -2699,12 +2716,17 @@ button.empty-state {
 }
 
 .handbook-card {
+  width: 100%;
   position: relative;
   min-width: 0;
   display: grid;
-  grid-template-columns: 130px minmax(0, 1fr);
+  grid-template-columns: 122px minmax(0, 1fr);
   overflow: hidden;
   opacity: .72;
+  padding: 0;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
 }
 
 .handbook-card.selected {
@@ -2716,30 +2738,53 @@ button.empty-state {
 }
 
 .handbook-card > img {
-  width: 130px;
+  width: 122px;
   height: 100%;
-  min-height: 180px;
+  min-height: 166px;
   display: block;
   object-fit: cover;
 }
 
-.handbook-card > div:last-child {
+.handbook-card-placeholder {
+  width: 122px;
+  min-height: 166px;
+  display: grid;
+  place-items: center;
+  color: var(--leaf-deep);
+  background: var(--leaf-soft);
+}
+
+.handbook-card-copy {
+  display: block;
   min-width: 0;
   padding: 14px;
 }
 
-.handbook-card > div > span {
+.handbook-card-copy > small {
   color: var(--leaf-deep);
   font-family: var(--font-display);
   font-size: 9px;
   font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
 }
 
 .handbook-card h3 {
-  margin: 5px 0 12px;
+  margin: 6px 0 9px;
   font-family: var(--font-display);
   font-size: 16px;
   font-weight: 800;
+  line-height: 1.25;
+}
+
+.handbook-candidate-description {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .card-select {
@@ -2759,34 +2804,6 @@ button.empty-state {
 
 .handbook-card.selected .card-select {
   background: var(--leaf);
-}
-
-.inline-edit {
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
-  align-items: center;
-  gap: 5px;
-  margin-top: 6px;
-  color: var(--muted);
-  font-family: var(--font-display);
-  font-size: 9px;
-  text-transform: uppercase;
-}
-
-.inline-edit input,
-.inline-edit select {
-  min-width: 0;
-  width: 100%;
-  min-height: 36px;
-  padding: 3px 5px;
-  background: var(--paper);
-  border: 2px solid var(--line);
-  outline: 0;
-  font-size: 10px;
-}
-
-.inline-edit.size {
-  grid-template-columns: 38px minmax(45px, 1fr) 45px;
 }
 
 .export-panel {
@@ -2812,14 +2829,149 @@ button.empty-state {
   font-size: 10px;
 }
 
-.mini-menu-preview {
-  min-height: 310px;
+.handbook-generator {
+  display: grid;
+  gap: 9px;
+  margin: 14px 0;
+  padding: 12px;
+  text-align: left;
+  background: var(--cream);
+  border: 2px solid var(--line-dark);
+}
+
+.handbook-prompt-label {
+  display: grid;
+  gap: 7px;
+}
+
+.handbook-prompt-label > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.handbook-prompt-label textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  padding: 10px;
+  color: var(--ink);
+  background: var(--paper-hi);
+  border: 2px solid var(--line);
+  outline: 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.handbook-style-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.handbook-style-presets > span {
+  width: 100%;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.handbook-style-presets button {
+  min-height: 30px;
+  padding: 4px 7px;
+  color: var(--leaf-deep);
+  background: var(--leaf-soft);
+  border: 2px solid var(--leaf);
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.handbook-reference-upload,
+.handbook-reference-attached {
+  min-width: 0;
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 7px;
+  color: var(--ink-soft);
+  background: var(--paper-hi);
+  border: 2px dashed var(--line-dark);
+  text-align: left;
+}
+
+.handbook-reference-upload {
+  width: 100%;
+  grid-template-columns: 30px minmax(0, 1fr);
+}
+
+.handbook-reference-upload strong,
+.handbook-reference-upload small,
+.handbook-reference-attached strong,
+.handbook-reference-attached small {
+  display: block;
+}
+
+.handbook-reference-upload strong,
+.handbook-reference-attached strong {
+  font-family: var(--font-display);
+  font-size: 9px;
+}
+
+.handbook-reference-upload small,
+.handbook-reference-attached small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.handbook-reference-attached > img {
+  width: 36px;
+  height: 36px;
+  display: block;
+  object-fit: cover;
+  border: 2px solid var(--line);
+}
+
+.handbook-generation-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 12px;
+  padding: 8px;
+  color: var(--leaf-deep);
+  background: var(--leaf-soft);
+  border: 2px solid var(--leaf);
+  font-size: 9px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.handbook-error {
+  margin-bottom: 12px;
+  text-align: left;
+}
+
+.handbook-sheet {
+  position: relative;
+  min-height: 520px;
+  aspect-ratio: 2 / 3;
   display: grid;
   place-items: center;
-  align-content: center;
-  gap: 14px;
   margin-bottom: 12px;
-  padding: 24px;
+  overflow: hidden;
   color: var(--ink);
   background:
     linear-gradient(45deg, rgba(95,116,68,.05) 25%, transparent 25% 75%, rgba(95,116,68,.05) 75%),
@@ -2831,27 +2983,131 @@ button.empty-state {
     var(--shadow-small);
 }
 
-.mini-menu-preview svg {
+.handbook-artwork {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.handbook-sheet::after {
+  content: "";
+  position: absolute;
+  inset: 7%;
+  z-index: 1;
+  background: rgba(255, 240, 189, .88);
+  border: 2px solid rgba(112, 69, 46, .78);
+  box-shadow: inset 0 0 0 4px rgba(244, 223, 168, .72);
+}
+
+.handbook-sheet-content {
+  position: relative;
+  z-index: 2;
+  width: 78%;
+  height: 82%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10% 3% 4%;
+}
+
+.handbook-sheet-content > svg {
   color: var(--leaf);
 }
 
-.mini-menu-preview small {
+.handbook-sheet-content > small {
+  margin-top: 9px;
   font-family: var(--font-display);
-  font-size: 9px;
+  font-size: 8px;
   letter-spacing: .16em;
 }
 
-.mini-menu-preview strong {
+.handbook-sheet-content > strong {
+  margin-top: 10px;
   font-family: var(--font-display);
-  font-size: 25px;
+  font-size: 20px;
   font-weight: 800;
   line-height: 1.1;
+  text-align: center;
 }
 
-.mini-menu-preview span {
+.handbook-preview-list {
+  width: 100%;
+  display: grid;
+  gap: 0;
+  margin-top: 17px;
+}
+
+.handbook-preview-list > div {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 7px;
+  padding: 9px 0;
+  border-top: 1px solid rgba(112, 69, 46, .42);
+  text-align: left;
+}
+
+.handbook-preview-list > div > span {
   color: var(--leaf-deep);
   font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.handbook-preview-list p,
+.handbook-preview-list b,
+.handbook-preview-list small {
+  display: block;
+  margin: 0;
+}
+
+.handbook-preview-list b {
+  overflow-wrap: anywhere;
+  font-family: var(--font-display);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.handbook-preview-list small {
+  display: -webkit-box;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 7px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.handbook-preview-list.dense > div {
+  padding-block: 5px;
+}
+
+.handbook-preview-list.dense b {
+  font-size: 9px;
+}
+
+.handbook-preview-list.dense small {
+  -webkit-line-clamp: 1;
+}
+
+.handbook-empty-selection {
+  margin: auto;
+  color: var(--muted);
+  font-family: var(--font-display);
   font-size: 10px;
+}
+
+.handbook-result-note {
+  margin: 0 0 11px !important;
+  padding: 7px 8px;
+  color: var(--leaf-deep) !important;
+  background: var(--leaf-soft);
+  border: 1px solid var(--leaf);
+  line-height: 1.45;
+  text-align: left;
 }
 
 .export-panel .button + .button {
@@ -3034,7 +3290,7 @@ button.empty-state {
   }
 
   .handbook-card-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .step-form-grid {
@@ -3383,15 +3639,22 @@ button.empty-state {
   }
 
   .handbook-card {
-    grid-template-columns: 100px minmax(0, 1fr);
+    grid-template-columns: 104px minmax(0, 1fr);
   }
 
-  .handbook-card > img {
-    width: 100px;
+  .handbook-card > img,
+  .handbook-card-placeholder {
+    width: 104px;
   }
 
-  .mini-menu-preview {
-    min-height: 280px;
+  .handbook-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .handbook-sheet {
+    width: min(100%, 380px);
+    min-height: 0;
+    margin-inline: auto;
   }
 
   .atelier-footer {
@@ -3434,6 +3697,11 @@ button.empty-state {
 }
 
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
   .topbar,
   .world-scenery,
   .stage-intro,
@@ -3459,15 +3727,27 @@ button.empty-state {
   .export-panel {
     width: 180mm;
     margin: 0 auto;
+    padding: 0;
     border: 0;
     box-shadow: none;
   }
 
+  .export-panel > .panel-icon,
+  .export-panel > h2,
+  .export-panel > p,
+  .handbook-generator,
+  .handbook-generation-status,
+  .handbook-error,
+  .handbook-result-note,
   .export-panel > .button {
     display: none;
   }
 
-  .mini-menu-preview {
-    min-height: 240mm;
+  .handbook-sheet {
+    width: 180mm;
+    min-height: 267mm;
+    margin: 0;
+    border: 0;
+    box-shadow: none;
   }
 }
