@@ -1,5 +1,6 @@
 "use client";
 
+import NextImage, { type ImageProps } from "next/image";
 import {
   ArrowRight,
   AudioLines,
@@ -298,6 +299,29 @@ const referenceCopy: Record<
 
 function cn(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
+}
+
+type WorkspaceImageProps = Omit<
+  ImageProps,
+  "height" | "unoptimized" | "width"
+> & {
+  portrait?: boolean;
+};
+
+function WorkspaceImage({
+  alt,
+  portrait = false,
+  ...props
+}: WorkspaceImageProps) {
+  return (
+    <NextImage
+      {...props}
+      alt={alt}
+      width={portrait ? 1024 : 960}
+      height={portrait ? 1536 : 720}
+      unoptimized
+    />
+  );
 }
 
 function tr(language: Language, english: string, chinese: string) {
@@ -1291,7 +1315,7 @@ function ReferenceEditor({
             <>
               <label className={cn("asset-drop", asset && "has-asset")}>
                 {asset ? (
-                  <img
+                  <WorkspaceImage
                     src={asset}
                     alt={tr(language, "Reference preview", "参考预览")}
                   />
@@ -1438,7 +1462,10 @@ function StepEditor({
         <div className="modal-body step-form-grid">
           <label className={cn("asset-drop step-image-drop", image && "has-asset")}>
             {image ? (
-              <img src={image} alt={tr(language, "Step visual", "步骤图片")} />
+              <WorkspaceImage
+                src={image}
+                alt={tr(language, "Step visual", "步骤图片")}
+              />
             ) : (
               <>
                 <ImagePlus size={23} />
@@ -3226,7 +3253,7 @@ export default function Home() {
                 <article className="idea-tile pixel-panel" key={idea.id}>
                   <div className="idea-thumb">
                     {idea.image ? (
-                      <img
+                      <WorkspaceImage
                         src={idea.image}
                         alt={tr(
                           language,
@@ -3316,7 +3343,7 @@ export default function Home() {
                   )}
                 >
                   {selectedIdea.image ? (
-                    <img src={selectedIdea.image} alt="" />
+                    <WorkspaceImage src={selectedIdea.image} alt="" />
                   ) : (
                     <span className="selected-idea-placeholder">
                       <CakeSlice size={19} />
@@ -3349,7 +3376,7 @@ export default function Home() {
                           onClick={() => selectDesignIdea(idea)}
                         >
                           {idea.image ? (
-                            <img src={idea.image} alt="" />
+                            <WorkspaceImage src={idea.image} alt="" />
                           ) : (
                             <span className="selected-idea-placeholder">
                               <CakeSlice size={16} />
@@ -3436,7 +3463,7 @@ export default function Home() {
                       <article className="reference-card" key={reference.id}>
                         <div className={cn("reference-preview", `kind-${reference.kind}`)}>
                           {reference.asset && (reference.kind === "image" || reference.kind === "canvas") ? (
-                            <img
+                            <WorkspaceImage
                               src={reference.asset}
                               alt={tr(
                                 language,
@@ -3564,7 +3591,7 @@ export default function Home() {
                     </div>
                   ) : renderResult ? (
                     <>
-                      <img
+                      <WorkspaceImage
                         src={renderResult.src}
                         alt={tr(
                           language,
@@ -3706,7 +3733,10 @@ export default function Home() {
                       aria-pressed={active}
                     >
                       {idea.image ? (
-                        <img src={ideaRender?.src || idea.image} alt="" />
+                        <WorkspaceImage
+                          src={ideaRender?.src || idea.image}
+                          alt=""
+                        />
                       ) : (
                         <span className="active-design-placeholder">
                           <CakeSlice size={20} />
@@ -3729,7 +3759,7 @@ export default function Home() {
 
             <div className="product-overview pixel-panel">
               <div className="product-mini-render">
-                <img
+                <WorkspaceImage
                   src={
                     renderResult?.src ||
                     selectedIdea.image ||
@@ -4090,7 +4120,7 @@ export default function Home() {
                       <div className="step-number">{String(index + 1).padStart(2, "0")}</div>
                       <div className="step-visual">
                         {step.image ? (
-                          <img
+                          <WorkspaceImage
                             src={step.image}
                             alt={tr(
                               language,
@@ -4258,7 +4288,7 @@ export default function Home() {
                       );
                       return (
                         <article className="production-row" key={row.id}>
-                          <img
+                          <WorkspaceImage
                             className="production-thumb"
                             src={product.image}
                             alt={tr(
@@ -4484,7 +4514,7 @@ export default function Home() {
                             {selected ? <Check size={13} /> : <Plus size={13} />}
                           </span>
                           {artwork ? (
-                            <img
+                            <WorkspaceImage
                               src={artwork}
                               alt={tr(
                                 language,
@@ -4587,7 +4617,7 @@ export default function Home() {
                     </div>
                     {handbookReferenceImage ? (
                       <div className="handbook-reference-attached">
-                        <img src={handbookReferenceImage} alt="" />
+                        <WorkspaceImage src={handbookReferenceImage} alt="" />
                         <span>
                           <strong>
                             {tr(language, "Style reference", "风格参考")}
@@ -4689,7 +4719,7 @@ export default function Home() {
 
                   <div className="handbook-sheet">
                     {handbookResult && (
-                      <img
+                      <WorkspaceImage
                         className="handbook-artwork"
                         src={handbookResult.src}
                         alt={tr(
@@ -4697,6 +4727,7 @@ export default function Home() {
                           "AI-generated handbook artwork",
                           "AI 生成的手册视觉"
                         )}
+                        portrait
                       />
                     )}
                     <div className="handbook-sheet-content">

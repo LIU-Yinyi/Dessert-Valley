@@ -273,7 +273,7 @@ export async function POST(request: Request) {
   try {
     if (visualReferences.length) {
       const form = new FormData();
-      form.set("model", "gpt-image-2");
+      form.set("model", "gpt-image-1-mini");
       form.set("prompt", prompt);
       form.set("size", "1024x768");
       form.set("quality", "medium");
@@ -300,7 +300,7 @@ export async function POST(request: Request) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-image-2",
+          model: "gpt-image-1-mini",
           prompt,
           size: "1024x768",
           quality: "medium",
@@ -362,7 +362,7 @@ export async function POST(request: Request) {
 
   return json({
     image: `data:image/jpeg;base64,${base64Image}`,
-    model: "gpt-image-2",
+    model: "gpt-image-1-mini",
     inputCount: renderRequest.references.length,
     visualInputCount: visualReferences.length,
     requestId,

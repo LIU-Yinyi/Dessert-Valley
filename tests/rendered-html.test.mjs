@@ -195,7 +195,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.doesNotMatch(layout, /codex-preview|_sites-preview/i);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 
-  assert.match(renderRoute, /gpt-image-2/);
+  assert.match(renderRoute, /gpt-image-1-mini/);
   assert.match(renderRoute, /OPENAI_API_KEY/);
   assert.match(renderRoute, /\/v1\/images\/edits/);
   assert.match(renderRoute, /form\.append\(\s*"image\[\]"/);
@@ -205,7 +205,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.doesNotMatch(renderRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
 
   assert.match(planAdviceRoute, /https:\/\/api\.openai\.com\/v1\/responses/);
-  assert.match(planAdviceRoute, /gpt-5\.6-sol/);
+  assert.match(planAdviceRoute, /gpt-5\.6-luna/);
   assert.match(planAdviceRoute, /OPENAI_API_KEY/);
   assert.match(planAdviceRoute, /type: "json_schema"/);
   assert.match(planAdviceRoute, /strict: true/);
@@ -214,7 +214,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(planAdviceRoute, /Existing user-authored steps are present/);
   assert.doesNotMatch(planAdviceRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
 
-  assert.match(handbookRoute, /gpt-image-2/);
+  assert.match(handbookRoute, /gpt-image-1-mini/);
   assert.match(handbookRoute, /OPENAI_API_KEY/);
   assert.match(handbookRoute, /\/v1\/images\/edits/);
   assert.match(handbookRoute, /form\.append\(\s*"image\[\]"/);

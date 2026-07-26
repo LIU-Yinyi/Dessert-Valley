@@ -71,7 +71,7 @@ type AdviceResult = {
   steps: AdviceStep[];
 };
 
-const MODEL = "gpt-5.6-sol";
+const MODEL = "gpt-5.6-luna";
 const MAX_REQUEST_BYTES = 256 * 1024;
 const MAX_MATERIALS = 60;
 const MAX_VARIANTS = 12;
