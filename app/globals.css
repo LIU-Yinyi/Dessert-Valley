@@ -1475,8 +1475,22 @@ input[type="file"] {
   margin-bottom: 14px;
 }
 
-.muse-panel .button + .button {
+.muse-panel > .button + .button {
   margin-top: 8px;
+}
+
+.muse-save-actions {
+  display: grid;
+  grid-template-columns: minmax(96px, .72fr) minmax(0, 1.28fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.muse-save-actions .button {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 8px;
+  white-space: nowrap;
 }
 
 .modal-backdrop {

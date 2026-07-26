@@ -2125,6 +2125,58 @@ export default function Home() {
     }
   };
 
+  const saveActiveRendering = (continueToProduct: boolean) => {
+    if (!renderResult || renderingIsStale || rendering) {
+      notify(
+        tr(
+          language,
+          "Render the latest intent before saving.",
+          "请先根据最新意图生成渲染图后再保存。"
+        )
+      );
+      return;
+    }
+
+    const savedImageName = `${
+      selectedIdea.title
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, "-")
+        .replace(/^-|-$/g, "") || "dessert"
+    }-${renderResult.view}-rendering.png`;
+
+    setIdeas((current) =>
+      current.map((idea) =>
+        idea.id === selectedIdea.id
+          ? {
+              ...idea,
+              image: renderResult.src,
+              imageName: savedImageName,
+            }
+          : idea
+      )
+    );
+
+    if (continueToProduct) {
+      openStage("product");
+      notify(
+        tr(
+          language,
+          "Rendering saved. Opening the recipe bench.",
+          "渲染图已保存，正在进入配方工作台。"
+        )
+      );
+      return;
+    }
+
+    notify(
+      tr(
+        language,
+        "Rendering saved to the idea card.",
+        "渲染图已保存并更新创意卡。"
+      )
+    );
+  };
+
   const addVariant = () =>
     setActiveVariants((current) => [
       ...current,
@@ -3330,9 +3382,30 @@ export default function Home() {
                       ? tr(language, "Update rendering", "更新渲染")
                       : tr(language, "Product rendering", "产品渲染")}
                 </button>
-                <button className="button ghost full" type="button" onClick={() => openStage("product")}>
-                  {tr(language, "Continue to Product", "继续到产品")} <ArrowRight size={15} />
-                </button>
+                <div className="muse-save-actions">
+                  <button
+                    className="button ghost"
+                    type="button"
+                    onClick={() => saveActiveRendering(false)}
+                    disabled={!renderResult || renderingIsStale || rendering}
+                  >
+                    <Check size={15} />
+                    {tr(language, "Save", "保存")}
+                  </button>
+                  <button
+                    className="button secondary"
+                    type="button"
+                    onClick={() => saveActiveRendering(true)}
+                    disabled={!renderResult || renderingIsStale || rendering}
+                  >
+                    {tr(
+                      language,
+                      "Save & build recipe",
+                      "保存并进行配方"
+                    )}
+                    <ArrowRight size={15} />
+                  </button>
+                </div>
               </aside>
             </div>
           </section>
@@ -3406,7 +3479,11 @@ export default function Home() {
             <div className="product-overview pixel-panel">
               <div className="product-mini-render">
                 <img
-                  src={renderResult?.src || currentProduct.image}
+                  src={
+                    renderResult?.src ||
+                    selectedIdea.image ||
+                    currentProduct.image
+                  }
                   alt={tr(
                     language,
                     `${selectedIdea.title} product rendering`,

@@ -58,6 +58,16 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /designIntentSignature/);
   assert.match(page, /referencePackages/);
   assert.match(page, /renderResults/);
+  assert.match(page, /const saveActiveRendering = \(continueToProduct: boolean\)/);
+  assert.match(page, /image: renderResult\.src/);
+  assert.match(
+    page,
+    /renderResult\?\.src\s*\|\|\s*selectedIdea\.image\s*\|\|\s*currentProduct\.image/s,
+  );
+  assert.match(page, /onClick=\{\(\) => saveActiveRendering\(false\)\}/);
+  assert.match(page, /onClick=\{\(\) => saveActiveRendering\(true\)\}/);
+  assert.match(page, /"Save & build recipe"/);
+  assert.doesNotMatch(page, /"Continue to Product"/);
   assert.match(page, /productDrafts/);
   assert.match(page, /fetch\("\/api\/plan-advice"/);
   assert.match(page, /material-aware steps/);
@@ -127,6 +137,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /\.selected-idea-menu/);
   assert.match(css, /\.selected-idea-option/);
   assert.match(css, /\.render-error/);
+  assert.match(css, /\.muse-save-actions/);
   assert.match(css, /\.plan-advice-status/);
   assert.match(css, /\.plan-advice-error/);
   assert.match(css, /\.handbook-generator/);
