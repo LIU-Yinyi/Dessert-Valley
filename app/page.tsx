@@ -33,16 +33,19 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Redo2,
   Send,
   Share2,
   Sparkles,
   Star,
   Store,
+  Undo2,
   WandSparkles,
   X,
 } from "lucide-react";
 import {
   ChangeEvent,
+  CSSProperties,
   PointerEvent as ReactPointerEvent,
   useEffect,
   useMemo,
@@ -54,6 +57,7 @@ type Stage = "idea" | "design" | "product" | "bake";
 type Theme = "blush" | "french" | "harvest";
 type Size = "small" | "medium" | "large";
 type IdeaStatus = "inbox" | "ready";
+type DessertVariant = "moon" | "berry" | "garden";
 
 type IdeaCard = {
   id: number;
@@ -218,30 +222,61 @@ const productionMaterials = [
   { name: "Tea, herbs & garnish", unit: "set", perProduct: [1, 1, 1], price: 2.4 },
 ];
 
-const productRenderings = [
-  {
-    src: "/renderings/moonlit-jasmine-hero.png",
-    label: "Finished exterior",
-    detail: "Form, glaze & decoration",
-    alt: "Photoreal rendering of the finished Moonlit Jasmine Cloud cake",
-  },
-  {
-    src: "/renderings/moonlit-jasmine-cutaway.png",
-    label: "Cutaway structure",
-    detail: "Layers & pear moon insert",
-    alt: "Photoreal cutaway rendering showing the Moonlit Jasmine Cloud cake layers",
-  },
-];
+const productRenderings: Record<
+  DessertVariant,
+  { src: string; label: string; detail: string; alt: string }[]
+> = {
+  moon: [
+    {
+      src: "/renderings/moonlit-jasmine-hero.png",
+      label: "Finished exterior",
+      detail: "Form, glaze & decoration",
+      alt: "Photoreal rendering of the finished Moonlit Jasmine Cloud cake",
+    },
+    {
+      src: "/renderings/moonlit-jasmine-cutaway.png",
+      label: "Cutaway structure",
+      detail: "Layers & pear moon insert",
+      alt: "Photoreal cutaway rendering showing the Moonlit Jasmine Cloud cake layers",
+    },
+  ],
+  berry: [
+    {
+      src: "/renderings/strawberry-picnic-hero.png",
+      label: "Finished exterior",
+      detail: "Gingham finish & berry layers",
+      alt: "Photoreal rendering of the Strawberry Picnic Box cake",
+    },
+  ],
+  garden: [
+    {
+      src: "/renderings/pistachio-garden-hero.png",
+      label: "Finished exterior",
+      detail: "Pistachio moss & honey details",
+      alt: "Photoreal rendering of the Pistachio Garden cake",
+    },
+  ],
+};
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
+}
+
+function dessertVariantForIdea(idea: IdeaCard): DessertVariant {
+  if (idea.accent === "berry" || /strawberry|berry|picnic/i.test(idea.title)) {
+    return "berry";
+  }
+  if (idea.accent === "sage" || /pistachio|garden|botanical/i.test(idea.title)) {
+    return "garden";
+  }
+  return "moon";
 }
 
 function DessertArt({
   variant = "moon",
   compact = false,
 }: {
-  variant?: "moon" | "berry" | "garden";
+  variant?: DessertVariant;
   compact?: boolean;
 }) {
   return (
@@ -303,19 +338,51 @@ function InputTools({
 
 function SketchCanvas({
   onToast,
+  variant,
 }: {
   onToast: (message: string) => void;
+  variant: DessertVariant;
 }) {
+  type CanvasLabel = { id: number; x: number; y: number; text: string };
+  type CanvasSnapshot = { image: ImageData; labels: CanvasLabel[] };
+
+  const startingLabels: Record<DessertVariant, CanvasLabel[]> = {
+    moon: [
+      { id: 1, x: 68, y: 24, text: "crystal tea veil" },
+      { id: 2, x: 24, y: 68, text: "soft almond base" },
+    ],
+    berry: [
+      { id: 1, x: 67, y: 24, text: "edible gingham lid" },
+      { id: 2, x: 23, y: 68, text: "fresh berry layers" },
+    ],
+    garden: [
+      { id: 1, x: 68, y: 25, text: "pistachio moss" },
+      { id: 2, x: 25, y: 69, text: "hidden honey centre" },
+    ],
+  };
+  const brushColors = [
+    "#665273",
+    "#a6617d",
+    "#9c88b6",
+    "#718c72",
+    "#cc805f",
+    "#3f6579",
+  ];
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastPoint = useRef<{ x: number; y: number } | null>(null);
+  const undoStack = useRef<CanvasSnapshot[]>([]);
+  const redoStack = useRef<CanvasSnapshot[]>([]);
   const [drawing, setDrawing] = useState(false);
   const [tool, setTool] = useState<"brush" | "eraser">("brush");
+  const [brushColor, setBrushColor] = useState("#665273");
+  const [brushSize, setBrushSize] = useState(5);
+  const [brushPanelOpen, setBrushPanelOpen] = useState(false);
   const [annotationText, setAnnotationText] = useState("");
   const [placingLabel, setPlacingLabel] = useState(false);
-  const [labels, setLabels] = useState([
-    { id: 1, x: 68, y: 24, text: "crystal tea veil" },
-    { id: 2, x: 24, y: 68, text: "soft almond base" },
-  ]);
+  const [labels, setLabels] = useState<CanvasLabel[]>(() =>
+    startingLabels[variant].map((label) => ({ ...label }))
+  );
+  const [, refreshHistoryControls] = useState(0);
 
   const drawGuide = () => {
     const canvas = canvasRef.current;
@@ -327,28 +394,139 @@ function SketchCanvas({
     ctx.strokeStyle = "rgba(120, 104, 146, .36)";
     ctx.fillStyle = "rgba(222, 208, 243, .18)";
     ctx.lineWidth = 3;
-    ctx.setLineDash([10, 11]);
-    ctx.beginPath();
-    ctx.ellipse(450, 390, 265, 48, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.moveTo(260, 350);
-    ctx.bezierCurveTo(250, 240, 305, 160, 450, 152);
-    ctx.bezierCurveTo(596, 160, 650, 242, 640, 350);
-    ctx.bezierCurveTo(580, 392, 320, 392, 260, 350);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(456, 146, 78, 0.2, Math.PI * 1.5);
-    ctx.stroke();
+
+    if (variant === "berry") {
+      ctx.setLineDash([10, 11]);
+      ctx.beginPath();
+      ctx.ellipse(450, 406, 270, 42, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(288, 184);
+      ctx.quadraticCurveTo(288, 158, 314, 158);
+      ctx.lineTo(586, 158);
+      ctx.quadraticCurveTo(612, 158, 612, 184);
+      ctx.lineTo(612, 354);
+      ctx.quadraticCurveTo(612, 376, 590, 376);
+      ctx.lineTo(310, 376);
+      ctx.quadraticCurveTo(288, 376, 288, 354);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(288, 236);
+      ctx.lineTo(612, 236);
+      ctx.moveTo(288, 297);
+      ctx.lineTo(612, 297);
+      ctx.stroke();
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(348, 150);
+      ctx.lineTo(348, 383);
+      ctx.moveTo(552, 150);
+      ctx.lineTo(552, 383);
+      ctx.stroke();
+    } else if (variant === "garden") {
+      ctx.setLineDash([10, 11]);
+      ctx.beginPath();
+      ctx.ellipse(450, 397, 270, 46, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(258, 353);
+      ctx.bezierCurveTo(264, 222, 332, 164, 450, 158);
+      ctx.bezierCurveTo(568, 164, 636, 222, 642, 353);
+      ctx.bezierCurveTo(578, 390, 322, 390, 258, 353);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.lineWidth = 2;
+      [
+        [355, 222, 18],
+        [468, 204, 14],
+        [548, 254, 17],
+        [404, 302, 12],
+      ].forEach(([x, y, radius]) => {
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.moveTo(x - radius * 1.5, y);
+        ctx.lineTo(x + radius * 1.5, y);
+        ctx.moveTo(x, y - radius * 1.5);
+        ctx.lineTo(x, y + radius * 1.5);
+        ctx.stroke();
+      });
+    } else {
+      ctx.setLineDash([10, 11]);
+      ctx.beginPath();
+      ctx.ellipse(450, 390, 265, 48, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(260, 350);
+      ctx.bezierCurveTo(250, 240, 305, 160, 450, 152);
+      ctx.bezierCurveTo(596, 160, 650, 242, 640, 350);
+      ctx.bezierCurveTo(580, 392, 320, 392, 260, 350);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(456, 146, 78, 0.2, Math.PI * 1.5);
+      ctx.stroke();
+    }
     ctx.restore();
   };
 
   useEffect(() => {
     drawGuide();
-  }, []);
+  }, [variant]);
+
+  const captureSnapshot = (currentLabels = labels): CanvasSnapshot | null => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return null;
+    return {
+      image: ctx.getImageData(0, 0, canvas.width, canvas.height),
+      labels: currentLabels.map((label) => ({ ...label })),
+    };
+  };
+
+  const rememberCurrentState = () => {
+    const snapshot = captureSnapshot();
+    if (!snapshot) return;
+    undoStack.current.push(snapshot);
+    if (undoStack.current.length > 30) undoStack.current.shift();
+    redoStack.current = [];
+    refreshHistoryControls((value) => value + 1);
+  };
+
+  const restoreSnapshot = (snapshot: CanvasSnapshot) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.putImageData(snapshot.image, 0, 0);
+    setLabels(snapshot.labels.map((label) => ({ ...label })));
+  };
+
+  const undo = () => {
+    const previous = undoStack.current.pop();
+    if (!previous) return;
+    const current = captureSnapshot();
+    if (current) redoStack.current.push(current);
+    restoreSnapshot(previous);
+    refreshHistoryControls((value) => value + 1);
+    onToast("Last canvas change undone");
+  };
+
+  const redo = () => {
+    const next = redoStack.current.pop();
+    if (!next) return;
+    const current = captureSnapshot();
+    if (current) undoStack.current.push(current);
+    restoreSnapshot(next);
+    refreshHistoryControls((value) => value + 1);
+    onToast("Canvas change restored");
+  };
 
   const pointFromEvent = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -361,6 +539,7 @@ function SketchCanvas({
   const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const point = pointFromEvent(event);
     if (placingLabel && annotationText.trim()) {
+      rememberCurrentState();
       const rect = event.currentTarget.getBoundingClientRect();
       setLabels((current) => [
         ...current,
@@ -377,6 +556,7 @@ function SketchCanvas({
       return;
     }
     event.currentTarget.setPointerCapture(event.pointerId);
+    rememberCurrentState();
     setDrawing(true);
     lastPoint.current = point;
   };
@@ -390,8 +570,9 @@ function SketchCanvas({
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.lineWidth = tool === "eraser" ? 30 : 5;
-    ctx.strokeStyle = tool === "eraser" ? "rgba(255,255,255,.92)" : "#665273";
+    ctx.globalCompositeOperation = tool === "eraser" ? "destination-out" : "source-over";
+    ctx.lineWidth = tool === "eraser" ? Math.max(brushSize * 3, 16) : brushSize;
+    ctx.strokeStyle = brushColor;
     ctx.beginPath();
     ctx.moveTo(lastPoint.current.x, lastPoint.current.y);
     ctx.lineTo(point.x, point.y);
@@ -424,20 +605,118 @@ function SketchCanvas({
             <Eraser size={15} /> Erase
           </button>
         </div>
-        <button
-          className="icon-button"
-          type="button"
-          onClick={() => {
-            drawGuide();
-            setLabels([]);
-            onToast("Canvas reset");
-          }}
-          aria-label="Reset canvas"
-          data-tip="Reset canvas"
-        >
-          <RotateCcw size={16} />
-        </button>
+        <div className="canvas-actions">
+          <button
+            className="icon-button"
+            type="button"
+            onClick={undo}
+            disabled={undoStack.current.length === 0}
+            aria-label="Undo last canvas change"
+            data-tip="Undo"
+          >
+            <Undo2 size={16} />
+          </button>
+          <button
+            className="icon-button"
+            type="button"
+            onClick={redo}
+            disabled={redoStack.current.length === 0}
+            aria-label="Redo canvas change"
+            data-tip="Redo"
+          >
+            <Redo2 size={16} />
+          </button>
+          <button
+            className={cn("icon-button", brushPanelOpen && "active")}
+            type="button"
+            onClick={() => setBrushPanelOpen((current) => !current)}
+            aria-expanded={brushPanelOpen}
+            aria-controls="brush-settings-panel"
+            aria-label="Toggle brush settings"
+            data-tip="Brush settings"
+          >
+            <Palette size={16} />
+          </button>
+          <button
+            className="icon-button"
+            type="button"
+            onClick={() => {
+              rememberCurrentState();
+              drawGuide();
+              setLabels([]);
+              onToast("Canvas reset");
+            }}
+            aria-label="Reset canvas"
+            data-tip="Reset canvas"
+          >
+            <RotateCcw size={16} />
+          </button>
+        </div>
       </div>
+      {brushPanelOpen && (
+        <div className="brush-panel" id="brush-settings-panel">
+          <div className="brush-setting-group">
+            <span className="brush-setting-label">Ink color</span>
+            <div className="color-palette" role="radiogroup" aria-label="Brush color">
+              {brushColors.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={cn(color === brushColor && "active")}
+                  style={{ "--swatch": color } as CSSProperties}
+                  onClick={() => {
+                    setBrushColor(color);
+                    setTool("brush");
+                  }}
+                  role="radio"
+                  aria-checked={color === brushColor}
+                  aria-label={`Use brush color ${color}`}
+                >
+                  {color === brushColor && <Check size={11} />}
+                </button>
+              ))}
+              <label className="custom-color" data-tip="Custom color">
+                <Plus size={13} />
+                <input
+                  type="color"
+                  value={brushColor}
+                  onChange={(event) => {
+                    setBrushColor(event.target.value);
+                    setTool("brush");
+                  }}
+                  aria-label="Choose a custom brush color"
+                />
+              </label>
+            </div>
+          </div>
+          <div className="brush-setting-group size-setting">
+            <div className="brush-size-heading">
+              <span className="brush-setting-label">Brush size</span>
+              <strong>{brushSize} px</strong>
+            </div>
+            <div className="brush-size-control">
+              <span className="brush-dot small" />
+              <input
+                type="range"
+                min="2"
+                max="24"
+                step="1"
+                value={brushSize}
+                onChange={(event) => setBrushSize(Number(event.target.value))}
+                aria-label="Brush size"
+              />
+              <span className="brush-dot large" />
+            </div>
+          </div>
+          <button
+            className="collapse-brush-panel"
+            type="button"
+            onClick={() => setBrushPanelOpen(false)}
+          >
+            Done <ChevronDown size={13} />
+          </button>
+        </div>
+      )}
       <div className={cn("canvas-wrap", placingLabel && "placing-label")}>
         <canvas
           ref={canvasRef}
@@ -454,9 +733,10 @@ function SketchCanvas({
             className="canvas-pin"
             key={label.id}
             style={{ left: `${label.x}%`, top: `${label.y}%` }}
-            onClick={() =>
-              setLabels((current) => current.filter((item) => item.id !== label.id))
-            }
+            onClick={() => {
+              rememberCurrentState();
+              setLabels((current) => current.filter((item) => item.id !== label.id));
+            }}
             type="button"
             aria-label={`Remove annotation: ${label.text}`}
           >
@@ -527,12 +807,16 @@ export default function Home() {
   );
   const [toast, setToast] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [ideaPickerOpen, setIdeaPickerOpen] = useState(false);
   const importRef = useRef<HTMLInputElement | null>(null);
 
   const selectedIdea =
     ideas.find((idea) => idea.id === selectedIdeaId) ?? ideas[0] ?? seedIdeas[0];
   const stageIndex = stageMeta.findIndex((item) => item.id === stage);
-  const activeProductRendering = productRenderings[renderIndex ?? 0];
+  const selectedVariant = dessertVariantForIdea(selectedIdea);
+  const availableProductRenderings = productRenderings[selectedVariant];
+  const activeProductRendering =
+    availableProductRenderings[renderIndex ?? 0] ?? availableProductRenderings[0];
 
   useEffect(() => {
     if (!toast) return;
@@ -548,7 +832,7 @@ export default function Home() {
     notify("Turning your sketch and notes into a product reference…");
     window.setTimeout(() => {
       setRenderIndex((current) =>
-        current === null ? 0 : (current + 1) % productRenderings.length
+        current === null ? 0 : (current + 1) % availableProductRenderings.length
       );
       setRenderingProduct(false);
       notify(
@@ -615,9 +899,19 @@ export default function Home() {
 
   const selectAndAdvance = (id: number) => {
     setSelectedIdeaId(id);
+    setRenderIndex(null);
+    setMuseIndex(0);
     setStage("design");
     window.scrollTo({ top: 0, behavior: "smooth" });
     notify("Idea selected — your design canvas is ready");
+  };
+
+  const chooseDesignIdea = (idea: IdeaCard) => {
+    setSelectedIdeaId(idea.id);
+    setIdeaPickerOpen(false);
+    setRenderIndex(null);
+    setMuseIndex(0);
+    notify(`${idea.title} is ready on the design canvas`);
   };
 
   const goToStage = (nextStage: Stage) => {
@@ -646,7 +940,7 @@ export default function Home() {
       ideas,
       selectedIdea,
       product: {
-        title: "Moonlit Jasmine Cloud",
+        title: selectedIdea.title,
         size,
         rendering: activeProductRendering.src,
         ingredients: ingredients.map((item) => ({
@@ -824,10 +1118,10 @@ export default function Home() {
         </div>
 
         <div className="sidebar-project">
-          <div className="mini-project-art">☾</div>
+          <div className="mini-project-art">{selectedIdea.icon}</div>
           <div>
             <span>Current creation</span>
-            <strong>Moonlit Jasmine</strong>
+            <strong>{selectedIdea.title}</strong>
             <small>Last edited just now</small>
           </div>
           <button className="icon-button" type="button" aria-label="Open project options">
@@ -850,7 +1144,7 @@ export default function Home() {
             <div className="breadcrumb">
               <span>My Atelier</span>
               <i>/</i>
-              <strong>Moonlit Jasmine Cloud</strong>
+              <strong>{selectedIdea.title}</strong>
             </div>
           </div>
           <div className="topbar-actions">
@@ -1072,13 +1366,60 @@ export default function Home() {
                   need to be neat—it only needs to feel like your intention.
                 </p>
               </div>
-              <div className="selected-idea-chip">
-                <span>{selectedIdea.icon}</span>
-                <div>
-                  <small>Designing from</small>
-                  <strong>{selectedIdea.title}</strong>
-                </div>
-                <ChevronDown size={15} />
+              <div className="selected-idea-selector">
+                <button
+                  className="selected-idea-chip"
+                  type="button"
+                  onClick={() => setIdeaPickerOpen((current) => !current)}
+                  aria-expanded={ideaPickerOpen}
+                  aria-haspopup="listbox"
+                >
+                  <span>{selectedIdea.icon}</span>
+                  <div>
+                    <small>Designing from</small>
+                    <strong>{selectedIdea.title}</strong>
+                  </div>
+                  <ChevronDown className={cn(ideaPickerOpen && "open")} size={15} />
+                </button>
+                {ideaPickerOpen && (
+                  <div className="idea-picker-menu" role="listbox" aria-label="Choose an idea to design">
+                    <div className="idea-picker-heading">
+                      <span>Choose an idea card</span>
+                      <small>{ideas.length} available</small>
+                    </div>
+                    <div className="idea-picker-options">
+                      {ideas.map((idea) => (
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={idea.id === selectedIdea.id}
+                          className={cn(idea.id === selectedIdea.id && "active")}
+                          key={idea.id}
+                          onClick={() => chooseDesignIdea(idea)}
+                        >
+                          <span className={cn("picker-idea-icon", `accent-${idea.accent}`)}>
+                            {idea.icon}
+                          </span>
+                          <span>
+                            <strong>{idea.title}</strong>
+                            <small>{idea.tags.join(" · ")}</small>
+                          </span>
+                          {idea.id === selectedIdea.id && <Check size={14} />}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      className="idea-picker-back"
+                      type="button"
+                      onClick={() => {
+                        setIdeaPickerOpen(false);
+                        goToStage("idea");
+                      }}
+                    >
+                      <Plus size={13} /> Create another idea
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1096,7 +1437,11 @@ export default function Home() {
                     <Check size={13} /> Saved
                   </span>
                 </div>
-                <SketchCanvas onToast={notify} />
+                <SketchCanvas
+                  key={selectedIdea.id}
+                  onToast={notify}
+                  variant={selectedVariant}
+                />
 
                 <div className="reference-strip">
                   <div className="section-title-row compact">
@@ -1158,7 +1503,7 @@ export default function Home() {
                   aria-live="polite"
                 >
                   {renderIndex === null ? (
-                    <DessertArt compact />
+                    <DessertArt compact variant={selectedVariant} />
                   ) : (
                     <img
                       className="assistant-render-image"
@@ -1208,7 +1553,9 @@ export default function Home() {
                       <Sparkles size={16} />
                       {renderIndex === null
                         ? "Generate product rendering"
-                        : "Generate another rendering"}
+                        : availableProductRenderings.length > 1
+                          ? "Generate another rendering"
+                          : "Regenerate product reference"}
                     </>
                   )}
                 </button>
@@ -1218,7 +1565,7 @@ export default function Home() {
                 </p>
                 {renderIndex !== null && (
                   <div className="render-variants" aria-label="Generated product renderings">
-                    {productRenderings.map((rendering, index) => (
+                    {availableProductRenderings.map((rendering, index) => (
                       <button
                         type="button"
                         className={cn(index === renderIndex && "active")}
@@ -1325,8 +1672,8 @@ export default function Home() {
                   <div className="product-title-row">
                     <div>
                       <span>Product card · 01</span>
-                      <h2>Moonlit Jasmine Cloud</h2>
-                      <p>Jasmine mousse · pear moon · almond sponge · tea veil</p>
+                      <h2>{selectedIdea.title}</h2>
+                      <p>{selectedIdea.tags.join(" · ")}</p>
                     </div>
                     <div className="temperature-pill">serve at 8°C</div>
                   </div>
