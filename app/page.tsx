@@ -1338,6 +1338,8 @@ export default function Home() {
   const [renderingDesignId, setRenderingDesignId] = useState<number | null>(null);
   const [renderResults, setRenderResults] = useState<Record<number, RenderResult | null>>({});
   const [renderErrors, setRenderErrors] = useState<Record<number, string>>({});
+  const [advisingDesignId, setAdvisingDesignId] = useState<number | null>(null);
+  const [planAdviceErrors, setPlanAdviceErrors] = useState<Record<number, string>>({});
   const [productDrafts, setProductDrafts] = useState<Record<number, ProductDraft>>(
     () =>
       Object.fromEntries(
@@ -1366,6 +1368,7 @@ export default function Home() {
   const references = referencePackages[selectedIdea.id] ?? [];
   const renderResult = renderResults[selectedIdea.id] ?? null;
   const renderError = renderErrors[selectedIdea.id] ?? "";
+  const planAdviceError = planAdviceErrors[selectedIdea.id] ?? "";
   const activeDraft = productDrafts[selectedIdea.id] ?? emptyProductDraft();
   const sizeVariants = activeDraft.variants;
   const materials = activeDraft.materials;
@@ -1373,6 +1376,7 @@ export default function Home() {
   const variant = renderResult?.productId ?? ideaVariant(selectedIdea);
   const currentProduct = products[variant];
   const rendering = renderingDesignId === selectedIdea.id;
+  const advisingPlan = advisingDesignId === selectedIdea.id;
   const currentIntentSignature = designIntentSignature(
     selectedIdea,
     references
@@ -1826,49 +1830,160 @@ export default function Home() {
       current.map((row) => (row.id === id ? { ...row, ...patch } : row))
     );
 
-  const advisePlan = () => {
-    const suggestions: PlanStep[] = [
-      {
-        id: uid(),
-        title: tr(language, "Prepare the base", "准备基底"),
-        instruction: tr(
+  const advisePlan = async () => {
+    if (advisingDesignId !== null) return;
+    const namedMaterials = materials.filter((row) => row.name.trim());
+    if (!namedMaterials.length) {
+      notify(
+        tr(
           language,
-          "Scale the components, line the mould and chill the tray. Keep the working area below 22°C.",
-          "称量各组分、铺好模具并冷却托盘。操作区域保持在 22°C 以下。"
-        ),
-        image: currentProduct.image,
-      },
-      {
-        id: uid(),
-        title: tr(language, "Build the centre", "制作夹心"),
-        instruction: tr(
-          language,
-          "Pipe the insert into the centre, leaving an even border. Freeze until firm before adding the final layer.",
-          "将夹心挤入中心并保留均匀边缘。冷冻至定型后再加入最后一层。"
-        ),
-        image: currentProduct.cutaway,
-      },
-      {
-        id: uid(),
-        title: tr(language, "Finish and rest", "完成与静置"),
-        instruction: tr(
-          language,
-          "Unmould while frozen, apply the chosen finish, then temper in the refrigerator before serving.",
-          "冷冻状态下脱模并完成表面装饰，随后在冰箱中回温后出品。"
-        ),
-        image: currentProduct.image,
-      },
-    ];
-    setActivePlanSteps((current) =>
-      current.length ? [...current, ...suggestions] : suggestions
-    );
-    notify(
-      tr(
-        language,
-        "Muse added a three-step starting plan",
-        "缪斯已添加三步起始方案"
-      )
-    );
+          "Add at least one named material before asking AI for advice.",
+          "请先添加至少一种有名称的材料，再请求 AI 建议。"
+        )
+      );
+      return;
+    }
+
+    const ideaSnapshot = selectedIdea;
+    const ideaId = ideaSnapshot.id;
+    const languageSnapshot = language;
+    const referencesSnapshot = references.map((reference) => ({
+      kind: reference.kind,
+      title: reference.title,
+      content: reference.content,
+    }));
+    const variantsSnapshot = sizeVariants.map((sizeVariant, index) => ({
+      name: sizeVariant.name,
+      width: sizeVariant.width,
+      height: sizeVariant.height,
+      depth: sizeVariant.depth,
+      unit: sizeVariant.unit,
+      scale:
+        index === 0
+          ? 1
+          : sizeVariantScale(sizeVariant, sizeVariants[0]),
+    }));
+    const materialsSnapshot = namedMaterials.map((row) => ({
+      name: row.name,
+      amount: row.amount,
+      unit: row.unit,
+      note: row.note,
+      variantAmounts: variantsSnapshot.flatMap((sizeVariant) => {
+        const adjusted = Number(row.amount) * sizeVariant.scale;
+        return row.amount && Number.isFinite(adjusted)
+          ? [
+              {
+                variantName: sizeVariant.name,
+                amount: `${adjusted.toFixed(adjusted < 10 ? 2 : 1)} ${row.unit}`.trim(),
+              },
+            ]
+          : [];
+      }),
+    }));
+    const existingStepsSnapshot = planSteps.map((step) => ({
+      title: step.title,
+      instruction: step.instruction,
+    }));
+
+    setAdvisingDesignId(ideaId);
+    setPlanAdviceErrors((current) => ({ ...current, [ideaId]: "" }));
+    try {
+      const response = await fetch("/api/plan-advice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          language: languageSnapshot,
+          product: {
+            title: ideaSnapshot.title,
+            description: ideaSnapshot.prompt,
+            tags: ideaSnapshot.tags,
+            designReferences: referencesSnapshot,
+            renderingView: renderResult?.view ?? null,
+          },
+          variants: variantsSnapshot,
+          materials: materialsSnapshot,
+          existingSteps: existingStepsSnapshot,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            steps?: Array<{ title?: string; instruction?: string }>;
+            error?: { code?: string; message?: string };
+          }
+        | null;
+      const suggestions: PlanStep[] =
+        payload?.steps
+          ?.filter(
+            (step) =>
+              typeof step.title === "string" &&
+              step.title.trim() &&
+              typeof step.instruction === "string" &&
+              step.instruction.trim()
+          )
+          .map((step) => ({
+            id: uid(),
+            title: step.title?.trim() ?? "",
+            instruction: step.instruction?.trim() ?? "",
+            image: "",
+          })) ?? [];
+      if (!response.ok || !suggestions.length) {
+        throw new Error(payload?.error?.code || "advice_failed");
+      }
+
+      setProductDrafts((current) => {
+        const draft = current[ideaId] ?? emptyProductDraft();
+        return {
+          ...current,
+          [ideaId]: {
+            ...draft,
+            planSteps: [...draft.planSteps, ...suggestions],
+          },
+        };
+      });
+      notify(
+        tr(
+          languageSnapshot,
+          `Muse added ${suggestions.length} material-aware steps`,
+          `缪斯已添加 ${suggestions.length} 个基于材料的步骤`
+        )
+      );
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "advice_failed";
+      const message =
+        code === "not_configured"
+          ? tr(
+              languageSnapshot,
+              "AI making-plan advice is not configured.",
+              "AI 制作方案功能尚未配置。"
+            )
+          : code === "rate_limit"
+            ? tr(
+                languageSnapshot,
+                "The pastry advisor is busy. Try again in a moment.",
+                "甜点顾问正忙，请稍后再试。"
+              )
+            : code === "advice_blocked"
+              ? tr(
+                  languageSnapshot,
+                  "Revise the product brief or material notes, then try again.",
+                  "请调整产品说明或材料备注后重试。"
+                )
+              : code === "request_too_large"
+                ? tr(
+                    languageSnapshot,
+                    "The recipe context is too large. Shorten a few notes and try again.",
+                    "配方上下文过大，请缩短部分备注后重试。"
+                  )
+                : tr(
+                    languageSnapshot,
+                    "The AI could not prepare making advice. Please try again.",
+                    "AI 暂时无法生成制作建议，请重试。"
+                  );
+      setPlanAdviceErrors((current) => ({ ...current, [ideaId]: message }));
+      notify(message);
+    } finally {
+      setAdvisingDesignId((current) => (current === ideaId ? null : current));
+    }
   };
 
   const saveStep = (step: PlanStep) => {
@@ -2985,7 +3100,10 @@ export default function Home() {
               )}
             </section>
 
-            <section className="making-plan pixel-panel">
+            <section
+              className="making-plan pixel-panel"
+              aria-busy={advisingPlan}
+            >
               <div className="section-heading inline">
                 <div>
                   <h2>{tr(language, "Making plan", "制作方案")}</h2>
@@ -2998,14 +3116,45 @@ export default function Home() {
                   </p>
                 </div>
                 <div className="section-actions">
-                  <button className="button ghost" type="button" onClick={advisePlan}>
-                    <WandSparkles size={15} /> {tr(language, "AI advise", "AI 建议")}
+                  <button
+                    className="button ghost"
+                    type="button"
+                    onClick={advisePlan}
+                    disabled={advisingDesignId !== null}
+                    aria-busy={advisingPlan}
+                  >
+                    {advisingPlan ? (
+                      <LoaderCircle className="spin" size={15} />
+                    ) : (
+                      <WandSparkles size={15} />
+                    )}
+                    {advisingPlan
+                      ? tr(language, "AI is advising…", "AI 正在建议……")
+                      : tr(language, "AI advise", "AI 建议")}
                   </button>
                   <button className="button secondary" type="button" onClick={() => setStepEditor("new")}>
                     <Plus size={15} /> {tr(language, "Add step", "添加步骤")}
                   </button>
                 </div>
               </div>
+              {advisingPlan && (
+                <div className="plan-advice-status" role="status" aria-live="polite">
+                  <LoaderCircle className="spin" size={15} />
+                  <span>
+                    {tr(
+                      language,
+                      `Reviewing the product brief and ${materials.filter((row) => row.name.trim()).length} materials…`,
+                      `正在分析产品说明和 ${materials.filter((row) => row.name.trim()).length} 种材料……`
+                    )}
+                  </span>
+                </div>
+              )}
+              {planAdviceError && !advisingPlan && (
+                <div className="render-error plan-advice-error" role="alert">
+                  <Bot size={15} />
+                  <span>{planAdviceError}</span>
+                </div>
+              )}
               {planSteps.length === 0 ? (
                 <div className="empty-state">
                   <BookOpen size={23} />

@@ -39,12 +39,13 @@ test("server renders the Dessert Valley product shell", async () => {
 });
 
 test("keeps the simplified multimodal workflow and responsive contracts", async () => {
-  const [page, css, layout, packageJson, renderRoute] = await Promise.all([
+  const [page, css, layout, packageJson, renderRoute, planAdviceRoute] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/render/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/plan-advice/route.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /type ReferenceKind = "text" \| "audio" \| "image" \| "canvas"/);
@@ -57,6 +58,11 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /referencePackages/);
   assert.match(page, /renderResults/);
   assert.match(page, /productDrafts/);
+  assert.match(page, /fetch\("\/api\/plan-advice"/);
+  assert.match(page, /material-aware steps/);
+  assert.match(page, /planAdviceErrors/);
+  assert.doesNotMatch(page, /Muse added a three-step starting plan/);
+  assert.doesNotMatch(page, /title: tr\(language, "Prepare the base"/);
   assert.match(page, /Add variants/);
   assert.match(page, /sizeVariantScale/);
   assert.match(page, /className="language-button"/);
@@ -102,6 +108,8 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /\.selected-idea-menu/);
   assert.match(css, /\.selected-idea-option/);
   assert.match(css, /\.render-error/);
+  assert.match(css, /\.plan-advice-status/);
+  assert.match(css, /\.plan-advice-error/);
   assert.match(css, /\.idea-card-actions/);
   assert.match(css, /\.idea-tag-preview/);
   assert.match(css, /\.button\.danger/);
@@ -123,4 +131,14 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(renderRoute, /DESIGN DOCK REFERENCES/);
   assert.match(renderRoute, /Input image \$\{index \+ 1\}/);
   assert.doesNotMatch(renderRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
+
+  assert.match(planAdviceRoute, /https:\/\/api\.openai\.com\/v1\/responses/);
+  assert.match(planAdviceRoute, /gpt-5\.6-sol/);
+  assert.match(planAdviceRoute, /OPENAI_API_KEY/);
+  assert.match(planAdviceRoute, /type: "json_schema"/);
+  assert.match(planAdviceRoute, /strict: true/);
+  assert.match(planAdviceRoute, /buildAdviceInstructions/);
+  assert.match(planAdviceRoute, /material-usage table/);
+  assert.match(planAdviceRoute, /Existing user-authored steps are present/);
+  assert.doesNotMatch(planAdviceRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
 });

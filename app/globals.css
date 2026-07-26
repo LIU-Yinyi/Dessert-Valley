@@ -1452,6 +1452,28 @@ input[type="file"] {
   margin-top: 1px;
 }
 
+.plan-advice-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 14px;
+  padding: 9px 10px;
+  color: var(--leaf-deep);
+  background: var(--leaf-soft);
+  border: 2px solid var(--leaf);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.plan-advice-status svg {
+  flex: 0 0 auto;
+}
+
+.plan-advice-error {
+  margin-top: -4px;
+  margin-bottom: 14px;
+}
+
 .muse-panel .button + .button {
   margin-top: 8px;
 }
