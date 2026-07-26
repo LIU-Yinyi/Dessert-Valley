@@ -1,6 +1,6 @@
-# Crumbloom Dessert Atelier
+# Dessert Valley
 
-Crumbloom is a responsive dessert-planning workspace for moving from a loose
+Dessert Valley is a responsive dessert-planning workspace for moving from a loose
 idea to a visual design, flexible recipe, production plan, and diner handbook.
 It uses an original **riverside orchard atelier** identity: timber signboards,
 parchment work surfaces, crisp countryside scenery, and practical modern forms.
@@ -10,12 +10,14 @@ parchment work surfaces, crisp countryside scenery, and practical modern forms.
 1. **Idea** — capture a short dessert direction and optional reference image.
 2. **Design** — combine text, audio, image, and empty-canvas references into one
    intent package, then generate exterior or cutaway product renderings.
-3. **Product** — configure optional dimensions, materials, handling loss, and
-   illustrated making steps.
+3. **Product** — switch between active designs, configure optional size
+   variants with automatically scaled materials, and add illustrated making
+   steps.
 4. **Bake** — calculate production quantities and costs, then prepare a
    configurable diner handbook in image, HTML, or print/PDF form.
 
 Cards can be exported and imported as JSON for sharing.
+The top navigation can switch the full interface between English and Chinese.
 
 ## Visual system
 

@@ -23,31 +23,21 @@ export async function generateMetadata(): Promise<Metadata> {
     requestHeaders.get("x-forwarded-proto") ??
     (host.includes("localhost") ? "http" : "https");
   const base = new URL(`${protocol}://${host}`);
-  const socialImage = new URL("/og.png", base).toString();
 
   return {
     metadataBase: base,
-    title: "Crumbloom — Cozy Dessert Atelier",
+    title: "Dessert Valley — Cozy Dessert Atelier",
     description:
       "Collect ideas, shape references, build recipes and plan bake day in a cozy pixel-farm dessert atelier.",
     openGraph: {
-      title: "Crumbloom — Cozy Dessert Atelier",
+      title: "Dessert Valley — Cozy Dessert Atelier",
       description: "A cozy dessert atelier for ideas, recipes and bake-day planning.",
       type: "website",
-      images: [
-        {
-          url: socialImage,
-          width: 1536,
-          height: 1024,
-          alt: "Crumbloom pixel-farm dessert atelier with three petite desserts",
-        },
-      ],
     },
     twitter: {
-      card: "summary_large_image",
-      title: "Crumbloom — Cozy Dessert Atelier",
+      card: "summary",
+      title: "Dessert Valley — Cozy Dessert Atelier",
       description: "A cozy dessert atelier for ideas, recipes and bake-day planning.",
-      images: [socialImage],
     },
   };
 }

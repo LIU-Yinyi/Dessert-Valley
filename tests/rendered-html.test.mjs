@@ -23,18 +23,18 @@ async function render() {
   );
 }
 
-test("server renders the Crumbloom product shell", async () => {
+test("server renders the Dessert Valley product shell", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>Crumbloom — Cozy Dessert Atelier<\/title>/i);
+  assert.match(html, /<title>Dessert Valley — Cozy Dessert Atelier<\/title>/i);
   assert.match(html, /Dream a dessert worth making\./);
   assert.match(html, /Idea gallery/);
   assert.match(html, /Moonlit Jasmine Cloud/);
   assert.match(html, /Skip to atelier workspace/);
-  assert.match(html, /Crumbloom Riverside Atelier/);
+  assert.match(html, /Dessert Valley Riverside Atelier/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -48,34 +48,52 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
 
   assert.match(page, /type ReferenceKind = "text" \| "audio" \| "image" \| "canvas"/);
   assert.match(page, /inheritedReferences\(idea\)/);
-  assert.match(page, /aria-label="Empty dessert sketch canvas"/);
-  assert.match(page, /useState<MaterialRow\[\]>\(\[\]\)/);
-  assert.match(page, /Include 6% handling loss/);
+  assert.match(page, /composeIntentRendering/);
+  assert.match(page, /intentSignature/);
+  assert.match(page, /referencePackages/);
+  assert.match(page, /renderResults/);
+  assert.match(page, /productDrafts/);
+  assert.match(page, /Add variants/);
+  assert.match(page, /sizeVariantScale/);
+  assert.match(page, /className="language-button"/);
+  assert.match(page, /切换到英文/);
+  assert.match(page, /Empty dessert sketch canvas/);
   assert.match(page, /className="agent-window"/);
   assert.match(page, /className="alias-tip"/);
+  assert.match(page, /className="active-design-switcher pixel-panel"/);
+  assert.match(page, /className="production-column-headings"/);
   assert.match(page, /className="world-scenery"/);
   assert.match(page, /aria-current=\{item\.id === stage \? "step" : undefined\}/);
   assert.match(page, /function useDialogFocus/);
   assert.ok(
-    page.indexOf("<strong>For chefs</strong>") <
-      page.indexOf("<strong>For diners</strong>"),
+    page.indexOf('"For chefs"') <
+      page.indexOf('"For diners"'),
   );
-  assert.doesNotMatch(page, /theme-select|Idea inbox|Estimated number/i);
+  assert.doesNotMatch(
+    page,
+    /theme-select|Idea inbox|Estimated number|Include 6% handling loss|sizeEnabled|includeLoss/i,
+  );
 
   assert.match(css, /@media \(max-width: 1120px\)/);
   assert.match(css, /@media \(max-width: 940px\)/);
   assert.match(css, /@media \(max-width: 620px\)/);
   assert.match(
     css,
-    /grid-template-columns: minmax\(160px, 1fr\) minmax\(500px, 640px\) minmax\(160px, 1fr\)/,
+    /grid-template-columns: minmax\(200px, 1fr\) minmax\(460px, 600px\) minmax\(200px, 1fr\)/,
   );
   assert.match(css, /--soil-deep: #4a2f24/i);
   assert.match(css, /\.atelier-footer/);
   assert.match(css, /\.pixel-tool-cursor/);
   assert.match(css, /\.cost-table-scroll/);
+  assert.match(css, /\.production-column-headings/);
+  assert.match(css, /\.active-design-list/);
+  assert.match(css, /\.variant-grid/);
+  assert.match(css, /\.language-button/);
   assert.match(css, /\.alias-tip:hover::after/);
 
-  assert.match(layout, /Crumbloom — Cozy Dessert Atelier/);
+  assert.match(layout, /Dessert Valley — Cozy Dessert Atelier/);
+  assert.doesNotMatch(layout, /Crumbloom/i);
+  assert.match(packageJson, /"name": "dessert-valley"/);
   assert.doesNotMatch(layout, /codex-preview|_sites-preview/i);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 });

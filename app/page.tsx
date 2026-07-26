@@ -17,6 +17,7 @@ import {
   ImagePlus,
   Import,
   Layers3,
+  Languages,
   LoaderCircle,
   Mic,
   PackageCheck,
@@ -47,6 +48,9 @@ import {
 type Stage = "idea" | "design" | "product" | "bake";
 type ReferenceKind = "text" | "audio" | "image" | "canvas";
 type ViewStyle = "exterior" | "cutaway";
+type Language = "en" | "zh";
+type ProductId = "moon" | "berry" | "garden";
+type StateUpdate<T> = T | ((current: T) => T);
 
 type IdeaCard = {
   id: number;
@@ -83,18 +87,42 @@ type PlanStep = {
 
 type ProductionRow = {
   id: number;
-  productId: "moon" | "berry" | "garden";
+  productId: ProductId;
   count: number;
   sizeValue: string;
   sizeUnit: string;
   style: string;
 };
 
-const stages: { id: Stage; label: string; hint: string; icon: typeof Sprout }[] = [
-  { id: "idea", label: "Idea", hint: "Gather", icon: Sprout },
-  { id: "design", label: "Design", hint: "Shape", icon: Pencil },
-  { id: "product", label: "Product", hint: "Build", icon: CakeSlice },
-  { id: "bake", label: "Bake", hint: "Make", icon: Wheat },
+type RenderResult = {
+  src: string;
+  view: ViewStyle;
+  inputs: number;
+  signature: string;
+  productId: ProductId;
+  influences: ReferenceKind[];
+};
+
+type SizeVariant = {
+  id: number;
+  name: string;
+  width: string;
+  height: string;
+  depth: string;
+  unit: string;
+};
+
+type ProductDraft = {
+  variants: SizeVariant[];
+  materials: MaterialRow[];
+  planSteps: PlanStep[];
+};
+
+const stages: { id: Stage; icon: typeof Sprout }[] = [
+  { id: "idea", icon: Sprout },
+  { id: "design", icon: Pencil },
+  { id: "product", icon: CakeSlice },
+  { id: "bake", icon: Wheat },
 ];
 
 const seedIdeas: IdeaCard[] = [
@@ -148,12 +176,29 @@ const products = {
   },
 } as const;
 
+const productNames: Record<Language, Record<ProductId, string>> = {
+  en: {
+    moon: "Moonlit Jasmine Cloud",
+    berry: "Strawberry Picnic Box",
+    garden: "Pistachio Garden",
+  },
+  zh: {
+    moon: "月光茉莉云朵",
+    berry: "草莓野餐盒",
+    garden: "开心果花园",
+  },
+};
+
+function productName(productId: ProductId, language: Language) {
+  return productNames[language][productId];
+}
+
 const productionMaterials = [
-  { name: "Whipping cream", unit: "kg", per: { moon: 0.12, berry: 0.1, garden: 0.11 } },
-  { name: "White chocolate", unit: "kg", per: { moon: 0.05, berry: 0.035, garden: 0.04 } },
-  { name: "Fruit / purée", unit: "kg", per: { moon: 0.045, berry: 0.12, garden: 0.04 } },
-  { name: "Nut flour / paste", unit: "kg", per: { moon: 0.04, berry: 0.02, garden: 0.09 } },
-  { name: "Garnish set", unit: "set", per: { moon: 1, berry: 1, garden: 1 } },
+  { name: "Whipping cream", nameZh: "淡奶油", unit: "kg", per: { moon: 0.12, berry: 0.1, garden: 0.11 } },
+  { name: "White chocolate", nameZh: "白巧克力", unit: "kg", per: { moon: 0.05, berry: 0.035, garden: 0.04 } },
+  { name: "Fruit / purée", nameZh: "水果／果泥", unit: "kg", per: { moon: 0.045, berry: 0.12, garden: 0.04 } },
+  { name: "Nut flour / paste", nameZh: "坚果粉／坚果酱", unit: "kg", per: { moon: 0.04, berry: 0.02, garden: 0.09 } },
+  { name: "Garnish set", nameZh: "装饰组合", unit: "set", per: { moon: 1, berry: 1, garden: 1 } },
 ];
 
 const referenceMeta: Record<
@@ -166,8 +211,62 @@ const referenceMeta: Record<
   canvas: { label: "Canvas", helper: "Draw a fresh sketch on an empty canvas", icon: Pencil },
 };
 
+const stageCopy: Record<
+  Language,
+  Record<Stage, { label: string; hint: string }>
+> = {
+  en: {
+    idea: { label: "Idea", hint: "Gather" },
+    design: { label: "Design", hint: "Shape" },
+    product: { label: "Product", hint: "Build" },
+    bake: { label: "Bake", hint: "Make" },
+  },
+  zh: {
+    idea: { label: "创意", hint: "收集" },
+    design: { label: "设计", hint: "塑形" },
+    product: { label: "产品", hint: "配方" },
+    bake: { label: "烘焙", hint: "制作" },
+  },
+};
+
+const referenceCopy: Record<
+  Language,
+  Record<ReferenceKind, { label: string; helper: string }>
+> = {
+  en: {
+    text: { label: "Text", helper: "Describe a form, finish or feeling" },
+    audio: { label: "Audio", helper: "Record or upload a voice direction" },
+    image: { label: "Image", helper: "Add a photo, collage or visual sample" },
+    canvas: { label: "Canvas", helper: "Draw a fresh sketch on an empty canvas" },
+  },
+  zh: {
+    text: { label: "文字", helper: "描述形状、质感或氛围" },
+    audio: { label: "语音", helper: "录制或上传语音想法" },
+    image: { label: "图片", helper: "添加照片、拼贴或视觉参考" },
+    canvas: { label: "画布", helper: "在空白画布上绘制草图" },
+  },
+};
+
 function cn(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
+}
+
+function tr(language: Language, english: string, chinese: string) {
+  return language === "zh" ? chinese : english;
+}
+
+function agentGreeting(language: Language) {
+  return tr(
+    language,
+    "Hello! Ask about texture, temperature, substitutions or workflow.",
+    "你好！可以询问质地、温度、替代材料或制作流程。"
+  );
+}
+
+function applyStateUpdate<T>(current: T, update: StateUpdate<T>) {
+  return typeof update === "function"
+    ? (update as (value: T) => T)(current)
+    : update;
 }
 
 function uid() {
@@ -211,6 +310,229 @@ function readFileAsDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+function loadCanvasImage(source: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Image could not be loaded"));
+    image.src = source;
+  });
+}
+
+function drawCover(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  width: number,
+  height: number
+) {
+  const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  context.drawImage(
+    image,
+    (width - drawWidth) / 2,
+    (height - drawHeight) / 2,
+    drawWidth,
+    drawHeight
+  );
+}
+
+function drawContain(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  width: number,
+  height: number
+) {
+  const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  context.drawImage(
+    image,
+    (width - drawWidth) / 2,
+    (height - drawHeight) / 2,
+    drawWidth,
+    drawHeight
+  );
+}
+
+function hashText(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function intentSignature(references: DesignReference[]) {
+  return hashText(
+    references
+      .map((reference) => {
+        const assetHint = reference.asset
+          ? `${reference.asset.length}:${reference.asset.slice(0, 48)}:${reference.asset.slice(-48)}`
+          : "";
+        return [
+          reference.kind,
+          reference.title,
+          reference.content,
+          assetHint,
+          reference.inherited ? "inherited" : "added",
+        ].join("|");
+      })
+      .join("::")
+  );
+}
+
+function intentProductId(idea: IdeaCard, references: DesignReference[]): ProductId {
+  const intent = references
+    .map((reference) => `${reference.title} ${reference.content}`)
+    .join(" ")
+    .toLowerCase();
+  if (/strawberry|raspberry|berry|pink|red|草莓|莓|粉色|红色/.test(intent)) return "berry";
+  if (/pistachio|garden|herb|moss|green|开心果|花园|香草|苔藓|绿色/.test(intent)) {
+    return "garden";
+  }
+  if (/jasmine|moon|pear|pearl|white|茉莉|月亮|梨|珍珠|白色/.test(intent)) return "moon";
+  return ideaVariant(idea);
+}
+
+function intentColor(references: DesignReference[]) {
+  const intent = references
+    .map((reference) => `${reference.title} ${reference.content}`)
+    .join(" ")
+    .toLowerCase();
+  const matches: Array<[RegExp, string]> = [
+    [/blue|sky|ocean|蓝|天空|海/, "#5b9fb5"],
+    [/pink|rose|blush|粉|玫瑰/, "#d78491"],
+    [/red|berry|strawberry|红|莓|草莓/, "#b95049"],
+    [/green|pistachio|moss|绿色|开心果|苔藓/, "#6f914a"],
+    [/purple|plum|violet|紫|李子/, "#765477"],
+    [/gold|amber|honey|金|琥珀|蜂蜜/, "#d3a044"],
+    [/black|charcoal|dark|黑|炭|深色/, "#4b3d42"],
+    [/white|pearl|cream|白|珍珠|奶油/, "#eadfbf"],
+  ];
+  const match = matches.find(([pattern]) => pattern.test(intent));
+  if (match) return match[1];
+  const palette = ["#d3a044", "#78a84b", "#a84e43", "#704a68", "#397c8d"];
+  return palette[Number.parseInt(hashText(intent || "dessert"), 36) % palette.length];
+}
+
+async function composeIntentRendering({
+  idea,
+  references,
+  view,
+}: {
+  idea: IdeaCard;
+  references: DesignReference[];
+  view: ViewStyle;
+}) {
+  const productId = intentProductId(idea, references);
+  const product = products[productId];
+  const source = view === "cutaway" ? product.cutaway : product.image;
+  const baseImage = await loadCanvasImage(source);
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 768;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas unavailable");
+
+  context.imageSmoothingEnabled = true;
+  context.fillStyle = "#f4dfa8";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  drawCover(context, baseImage, canvas.width, canvas.height);
+
+  const visualReferences = references.filter(
+    (reference) =>
+      Boolean(reference.asset) &&
+      (reference.kind === "image" || reference.kind === "canvas")
+  );
+  for (const reference of visualReferences.slice(-3)) {
+    try {
+      const referenceImage = await loadCanvasImage(reference.asset);
+      context.save();
+      if (reference.kind === "canvas") {
+        context.globalAlpha = 0.42;
+        context.globalCompositeOperation = "multiply";
+        drawContain(context, referenceImage, canvas.width, canvas.height);
+      } else {
+        context.globalAlpha = 0.18;
+        context.globalCompositeOperation = "soft-light";
+        drawCover(context, referenceImage, canvas.width, canvas.height);
+      }
+      context.restore();
+    } catch {
+      // Keep the remaining intent inputs usable if one local preview cannot load.
+    }
+  }
+
+  const color = intentColor(references);
+  context.save();
+  context.globalAlpha = visualReferences.length ? 0.16 : 0.12;
+  context.globalCompositeOperation = "color";
+  context.fillStyle = color;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.restore();
+
+  const intentText = references
+    .map((reference) => `${reference.title} ${reference.content}`)
+    .join(" ")
+    .toLowerCase();
+  context.save();
+  context.fillStyle = "#f4dfa8";
+  context.globalAlpha = 0.2;
+  if (/square|box|cube|方形|盒|立方/.test(intentText)) {
+    context.fillRect(0, 0, 110, canvas.height);
+    context.fillRect(canvas.width - 110, 0, 110, canvas.height);
+  } else if (/tall|tower|vertical|高|塔|竖/.test(intentText)) {
+    context.fillRect(0, 0, 170, canvas.height);
+    context.fillRect(canvas.width - 170, 0, 170, canvas.height);
+  } else if (/flat|wide|low|扁|宽|低/.test(intentText)) {
+    context.fillRect(0, 0, canvas.width, 95);
+    context.fillRect(0, canvas.height - 95, canvas.width, 95);
+  }
+  context.restore();
+
+  context.fillStyle = color;
+  context.fillRect(0, 0, canvas.width, 10);
+  context.fillRect(0, canvas.height - 10, canvas.width, 10);
+  context.fillRect(0, 0, 10, canvas.height);
+  context.fillRect(canvas.width - 10, 0, 10, canvas.height);
+  [0, 1, 2].forEach((index) => {
+    context.fillStyle = [color, "#f4dfa8", "#4a2f24"][index];
+    context.fillRect(28 + index * 30, canvas.height - 42, 20, 20);
+  });
+
+  return {
+    src: canvas.toDataURL("image/jpeg", 0.9),
+    productId,
+  };
+}
+
+function emptyProductDraft(): ProductDraft {
+  return { variants: [], materials: [], planSteps: [] };
+}
+
+function sizeVariantScale(variant: SizeVariant, baseVariant: SizeVariant) {
+  const unitScale: Record<string, number> = { mm: 1, cm: 10, in: 25.4 };
+  const variantUnit = unitScale[variant.unit] ?? 1;
+  const baseUnit = unitScale[baseVariant.unit] ?? 1;
+  const keys: Array<"width" | "height" | "depth"> = ["width", "height", "depth"];
+  const comparable = keys.filter(
+    (key) => Number(variant[key]) > 0 && Number(baseVariant[key]) > 0
+  );
+  if (!comparable.length) return 1;
+  const variantMeasure = comparable.reduce(
+    (total, key) => total * Number(variant[key]) * variantUnit,
+    1
+  );
+  const baseMeasure = comparable.reduce(
+    (total, key) => total * Number(baseVariant[key]) * baseUnit,
+    1
+  );
+  if (!Number.isFinite(variantMeasure / baseMeasure) || baseMeasure <= 0) return 1;
+  return Math.min(100, Math.max(0.01, variantMeasure / baseMeasure));
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -280,9 +602,11 @@ function useDialogFocus(onClose: () => void) {
 function CanvasPad({
   initialAsset,
   onChange,
+  language,
 }: {
   initialAsset: string;
   onChange: (asset: string) => void;
+  language: Language;
 }) {
   type CanvasSnapshot = ImageData;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -426,14 +750,14 @@ function CanvasPad({
             className={cn(tool === "pencil" && "active")}
             onClick={() => setTool("pencil")}
           >
-            <Pencil size={15} /> Pencil
+            <Pencil size={15} /> {tr(language, "Pencil", "画笔")}
           </button>
           <button
             type="button"
             className={cn(tool === "eraser" && "active")}
             onClick={() => setTool("eraser")}
           >
-            <Eraser size={15} /> Eraser
+            <Eraser size={15} /> {tr(language, "Eraser", "橡皮")}
           </button>
         </div>
         <div className="canvas-controls">
@@ -443,18 +767,18 @@ function CanvasPad({
               style={{ "--pencil-color": color } as CSSProperties}
             >
               <span className="color-swatch" aria-hidden="true" />
-              <span>Color</span>
+              <span>{tr(language, "Color", "颜色")}</span>
               <input
                 className="native-color-input"
                 type="color"
                 value={color}
                 onChange={(event) => setColor(event.target.value)}
-                aria-label="Pencil color"
+                aria-label={tr(language, "Pencil color", "画笔颜色")}
               />
             </label>
             <label className="size-slider">
               <span>
-                Size <strong>{size}px</strong>
+                {tr(language, "Size", "大小")} <strong>{size}px</strong>
               </span>
               <input
                 type="range"
@@ -462,7 +786,7 @@ function CanvasPad({
                 max="18"
                 value={size}
                 onChange={(event) => setSize(Number(event.target.value))}
-                aria-label="Pencil size"
+                aria-label={tr(language, "Pencil size", "画笔大小")}
               />
             </label>
           </div>
@@ -472,7 +796,7 @@ function CanvasPad({
               type="button"
               onClick={undo}
               disabled={historyState.undo === 0}
-              aria-label="Undo"
+              aria-label={tr(language, "Undo", "撤销")}
             >
               <Undo2 size={15} />
             </button>
@@ -481,11 +805,16 @@ function CanvasPad({
               type="button"
               onClick={redo}
               disabled={historyState.redo === 0}
-              aria-label="Redo"
+              aria-label={tr(language, "Redo", "重做")}
             >
               <Redo2 size={15} />
             </button>
-            <button className="square-button" type="button" onClick={clear} aria-label="Clear canvas">
+            <button
+              className="square-button"
+              type="button"
+              onClick={clear}
+              aria-label={tr(language, "Clear canvas", "清空画布")}
+            >
               <Trash2 size={15} />
             </button>
           </div>
@@ -505,7 +834,7 @@ function CanvasPad({
             setCursor((current) => ({ ...current, visible: false }));
           }}
           onPointerEnter={() => setCursor((current) => ({ ...current, visible: true }))}
-          aria-label="Empty dessert sketch canvas"
+          aria-label={tr(language, "Empty dessert sketch canvas", "空白甜点草图画布")}
         />
         <span
           className={cn("pixel-tool-cursor", cursor.visible && "visible", `tool-${tool}`)}
@@ -514,7 +843,9 @@ function CanvasPad({
         >
           {tool === "pencil" ? <Pencil size={17} /> : <Eraser size={17} />}
         </span>
-        <span className="canvas-empty-note">blank sketch paper</span>
+        <span className="canvas-empty-note">
+          {tr(language, "blank sketch paper", "空白草图纸")}
+        </span>
       </div>
     </div>
   );
@@ -525,14 +856,24 @@ function ReferenceEditor({
   existing,
   onClose,
   onSave,
+  language,
 }: {
   kind: ReferenceKind;
   existing: DesignReference | null;
   onClose: () => void;
   onSave: (reference: DesignReference) => void;
+  language: Language;
 }) {
   const meta = referenceMeta[kind];
-  const [title, setTitle] = useState(existing?.title ?? `${meta.label} reference`);
+  const localizedMeta = referenceCopy[language][kind];
+  const [title, setTitle] = useState(
+    existing?.title ??
+      tr(
+        language,
+        `${localizedMeta.label} reference`,
+        `${localizedMeta.label}参考`
+      )
+  );
   const [content, setContent] = useState(existing?.content ?? "");
   const [asset, setAsset] = useState(existing?.asset ?? "");
   const [recording, setRecording] = useState(false);
@@ -576,7 +917,13 @@ function ReferenceEditor({
       setAudioError("");
       setRecording(true);
     } catch {
-      setAudioError("Microphone unavailable. You can upload an audio clip instead.");
+      setAudioError(
+        tr(
+          language,
+          "Microphone unavailable. You can upload an audio clip instead.",
+          "麦克风不可用，可改为上传音频文件。"
+        )
+      );
     }
   };
 
@@ -592,7 +939,13 @@ function ReferenceEditor({
     onSave({
       id: existing?.id ?? uid(),
       kind,
-      title: title.trim() || `${meta.label} reference`,
+      title:
+        title.trim() ||
+        tr(
+          language,
+          `${localizedMeta.label} reference`,
+          `${localizedMeta.label}参考`
+        ),
       content: content.trim(),
       asset,
       inherited: existing?.inherited,
@@ -611,28 +964,41 @@ function ReferenceEditor({
         <header className="modal-header">
           <div className="modal-icon"><meta.icon size={18} /></div>
           <div>
-            <span className="micro-label">{existing ? "Edit reference" : "Add reference"}</span>
-            <h2 id="reference-dialog-title">{meta.label}</h2>
+            <span className="micro-label">
+              {existing
+                ? tr(language, "Edit reference", "编辑参考")
+                : tr(language, "Add reference", "添加参考")}
+            </span>
+            <h2 id="reference-dialog-title">{localizedMeta.label}</h2>
           </div>
-          <button className="square-button" type="button" onClick={onClose} aria-label="Close">
+          <button
+            className="square-button"
+            type="button"
+            onClick={onClose}
+            aria-label={tr(language, "Close", "关闭")}
+          >
             <X size={16} />
           </button>
         </header>
 
         <div className="modal-body">
           <label className="field">
-            <span>Card name</span>
+            <span>{tr(language, "Card name", "卡片名称")}</span>
             <input value={title} onChange={(event) => setTitle(event.target.value)} />
           </label>
 
           {kind === "text" && (
             <label className="field">
-              <span>Design direction</span>
+              <span>{tr(language, "Design direction", "设计方向")}</span>
               <textarea
                 rows={7}
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
-                placeholder="Shape, scale, texture, color, emotion…"
+                placeholder={tr(
+                  language,
+                  "Shape, scale, texture, color, emotion…",
+                  "形状、比例、质地、颜色、情绪……"
+                )}
                 autoFocus
               />
             </label>
@@ -642,23 +1008,30 @@ function ReferenceEditor({
             <>
               <label className={cn("asset-drop", asset && "has-asset")}>
                 {asset ? (
-                  <img src={asset} alt="Reference preview" />
+                  <img
+                    src={asset}
+                    alt={tr(language, "Reference preview", "参考预览")}
+                  />
                 ) : (
                   <>
                     <ImagePlus size={24} />
-                    <strong>Choose an image</strong>
+                    <strong>{tr(language, "Choose an image", "选择图片")}</strong>
                     <small>PNG, JPG, WEBP or HEIC</small>
                   </>
                 )}
                 <input type="file" accept="image/*" onChange={handleAsset} />
               </label>
               <label className="field">
-                <span>What should Muse notice?</span>
+                <span>{tr(language, "What should Muse notice?", "缪斯需要注意什么？")}</span>
                 <textarea
                   rows={3}
                   value={content}
                   onChange={(event) => setContent(event.target.value)}
-                  placeholder="Use the soft glaze and tiny flower placement."
+                  placeholder={tr(
+                    language,
+                    "Use the soft glaze and tiny flower placement.",
+                    "参考柔和的淋面与小花摆放。"
+                  )}
                 />
               </label>
             </>
@@ -672,39 +1045,53 @@ function ReferenceEditor({
                 onClick={toggleRecording}
               >
                 <Mic size={18} />
-                {recording ? "Stop recording" : "Record a voice note"}
+                {recording
+                  ? tr(language, "Stop recording", "停止录音")
+                  : tr(language, "Record a voice note", "录制语音")}
               </button>
-              <span>or</span>
+              <span>{tr(language, "or", "或")}</span>
               <label className="upload-audio">
-                <Upload size={16} /> Upload audio
+                <Upload size={16} /> {tr(language, "Upload audio", "上传音频")}
                 <input type="file" accept="audio/*" onChange={handleAsset} />
               </label>
               {audioError && <p className="field-error">{audioError}</p>}
               {asset && <audio controls src={asset} />}
               <label className="field">
-                <span>Optional note</span>
+                <span>{tr(language, "Optional note", "可选说明")}</span>
                 <textarea
                   rows={3}
                   value={content}
                   onChange={(event) => setContent(event.target.value)}
-                  placeholder="A short transcript or detail to remember."
+                  placeholder={tr(
+                    language,
+                    "A short transcript or detail to remember.",
+                    "可填写简短文字记录或需要记住的细节。"
+                  )}
                 />
               </label>
             </div>
           )}
 
-          {kind === "canvas" && <CanvasPad initialAsset={asset} onChange={setAsset} />}
+          {kind === "canvas" && (
+            <CanvasPad
+              initialAsset={asset}
+              onChange={setAsset}
+              language={language}
+            />
+          )}
         </div>
 
         <footer className="modal-footer">
-          <button className="button ghost" type="button" onClick={onClose}>Cancel</button>
+          <button className="button ghost" type="button" onClick={onClose}>
+            {tr(language, "Cancel", "取消")}
+          </button>
           <button
             className="button primary"
             type="button"
             onClick={confirm}
             disabled={kind === "text" ? !content.trim() : kind !== "audio" && !asset}
           >
-            <Check size={15} /> Confirm reference
+            <Check size={15} /> {tr(language, "Confirm reference", "确认参考")}
           </button>
         </footer>
       </section>
@@ -716,10 +1103,12 @@ function StepEditor({
   existing,
   onClose,
   onSave,
+  language,
 }: {
   existing: PlanStep | null;
   onClose: () => void;
   onSave: (step: PlanStep) => void;
+  language: Language;
 }) {
   const [title, setTitle] = useState(existing?.title ?? "");
   const [instruction, setInstruction] = useState(existing?.instruction ?? "");
@@ -745,48 +1134,67 @@ function StepEditor({
         <header className="modal-header">
           <div className="modal-icon"><Layers3 size={18} /></div>
           <div>
-            <span className="micro-label">{existing ? "Edit step" : "Add step"}</span>
-            <h2 id="step-dialog-title">Making instruction</h2>
+            <span className="micro-label">
+              {existing
+                ? tr(language, "Edit step", "编辑步骤")
+                : tr(language, "Add step", "添加步骤")}
+            </span>
+            <h2 id="step-dialog-title">
+              {tr(language, "Making instruction", "制作说明")}
+            </h2>
           </div>
-          <button className="square-button" type="button" onClick={onClose} aria-label="Close">
+          <button
+            className="square-button"
+            type="button"
+            onClick={onClose}
+            aria-label={tr(language, "Close", "关闭")}
+          >
             <X size={16} />
           </button>
         </header>
         <div className="modal-body step-form-grid">
           <label className={cn("asset-drop step-image-drop", image && "has-asset")}>
             {image ? (
-              <img src={image} alt="Step visual" />
+              <img src={image} alt={tr(language, "Step visual", "步骤图片")} />
             ) : (
               <>
                 <ImagePlus size={23} />
-                <strong>Add a step image</strong>
-                <small>Photo, diagram or generated visual</small>
+                <strong>{tr(language, "Add a step image", "添加步骤图片")}</strong>
+                <small>
+                  {tr(language, "Photo, diagram or generated visual", "照片、示意图或生成图片")}
+                </small>
               </>
             )}
             <input type="file" accept="image/*" onChange={handleImage} />
           </label>
           <div>
             <label className="field">
-              <span>Step title</span>
+              <span>{tr(language, "Step title", "步骤标题")}</span>
               <input
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
-                placeholder="e.g. Fill the mould"
+                placeholder={tr(language, "e.g. Fill the mould", "例如：填入模具")}
               />
             </label>
             <label className="field">
-              <span>Operating detail</span>
+              <span>{tr(language, "Operating detail", "操作细节")}</span>
               <textarea
                 rows={6}
                 value={instruction}
                 onChange={(event) => setInstruction(event.target.value)}
-                placeholder="Write temperature, timing, visual cues and handling notes."
+                placeholder={tr(
+                  language,
+                  "Write temperature, timing, visual cues and handling notes.",
+                  "填写温度、时间、视觉判断与操作注意事项。"
+                )}
               />
             </label>
           </div>
         </div>
         <footer className="modal-footer">
-          <button className="button ghost" type="button" onClick={onClose}>Cancel</button>
+          <button className="button ghost" type="button" onClick={onClose}>
+            {tr(language, "Cancel", "取消")}
+          </button>
           <button
             className="button primary"
             type="button"
@@ -800,7 +1208,7 @@ function StepEditor({
               })
             }
           >
-            <Check size={15} /> Save step
+            <Check size={15} /> {tr(language, "Save step", "保存步骤")}
           </button>
         </footer>
       </section>
@@ -809,14 +1217,19 @@ function StepEditor({
 }
 
 export default function Home() {
+  const [language, setLanguage] = useState<Language>("en");
   const [stage, setStage] = useState<Stage>("idea");
   const [ideas, setIdeas] = useState<IdeaCard[]>(seedIdeas);
   const [selectedIdeaId, setSelectedIdeaId] = useState(1);
   const [ideaText, setIdeaText] = useState("");
   const [ideaImage, setIdeaImage] = useState("");
   const [ideaImageName, setIdeaImageName] = useState("");
-  const [references, setReferences] = useState<DesignReference[]>(() =>
-    inheritedReferences(seedIdeas[0])
+  const [referencePackages, setReferencePackages] = useState<
+    Record<number, DesignReference[]>
+  >(() =>
+    Object.fromEntries(
+      seedIdeas.map((idea) => [idea.id, inheritedReferences(idea)])
+    )
   );
   const [dockOpen, setDockOpen] = useState(false);
   const [referenceEditor, setReferenceEditor] = useState<{
@@ -824,28 +1237,18 @@ export default function Home() {
     existing: DesignReference | null;
   } | null>(null);
   const [viewStyle, setViewStyle] = useState<ViewStyle>("exterior");
-  const [rendering, setRendering] = useState(false);
-  const [renderResult, setRenderResult] = useState<{
-    src: string;
-    view: ViewStyle;
-    inputs: number;
-  } | null>(null);
-  const [sizeEnabled, setSizeEnabled] = useState(false);
-  const [dimensions, setDimensions] = useState({
-    width: "",
-    height: "",
-    depth: "",
-    unit: "cm",
-  });
-  const [materials, setMaterials] = useState<MaterialRow[]>([]);
-  const [includeLoss, setIncludeLoss] = useState(false);
-  const [planSteps, setPlanSteps] = useState<PlanStep[]>([]);
+  const [renderingDesignId, setRenderingDesignId] = useState<number | null>(null);
+  const [renderResults, setRenderResults] = useState<Record<number, RenderResult | null>>({});
+  const [productDrafts, setProductDrafts] = useState<Record<number, ProductDraft>>(
+    () =>
+      Object.fromEntries(
+        seedIdeas.map((idea) => [idea.id, emptyProductDraft()])
+      )
+  );
   const [stepEditor, setStepEditor] = useState<PlanStep | "new" | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentInput, setAgentInput] = useState("");
-  const [agentMessages, setAgentMessages] = useState([
-    "Hello! Ask about texture, temperature, substitutions or workflow.",
-  ]);
+  const [agentMessages, setAgentMessages] = useState([agentGreeting("en")]);
   const [agentAudioName, setAgentAudioName] = useState("");
   const [bakeMode, setBakeMode] = useState<"chef" | "diner">("chef");
   const [productionRows, setProductionRows] = useState<ProductionRow[]>([
@@ -860,9 +1263,98 @@ export default function Home() {
 
   const selectedIdea =
     ideas.find((idea) => idea.id === selectedIdeaId) ?? ideas[0] ?? seedIdeas[0];
-  const variant = ideaVariant(selectedIdea);
+  const references = referencePackages[selectedIdea.id] ?? [];
+  const renderResult = renderResults[selectedIdea.id] ?? null;
+  const activeDraft = productDrafts[selectedIdea.id] ?? emptyProductDraft();
+  const sizeVariants = activeDraft.variants;
+  const materials = activeDraft.materials;
+  const planSteps = activeDraft.planSteps;
+  const variant = renderResult?.productId ?? ideaVariant(selectedIdea);
   const currentProduct = products[variant];
+  const rendering = renderingDesignId === selectedIdea.id;
+  const currentIntentSignature = intentSignature(references);
+  const renderingIsStale =
+    Boolean(renderResult) &&
+    (renderResult?.signature !== currentIntentSignature ||
+      renderResult?.view !== viewStyle);
+  const variantScales = sizeVariants.map((sizeVariant, index) => ({
+    id: sizeVariant.id,
+    scale:
+      index === 0
+        ? 1
+        : sizeVariantScale(sizeVariant, sizeVariants[0]),
+  }));
   const stageIndex = stages.findIndex((item) => item.id === stage);
+
+  const setActiveReferences = (update: StateUpdate<DesignReference[]>) =>
+    setReferencePackages((current) => {
+      const existing = current[selectedIdea.id] ?? inheritedReferences(selectedIdea);
+      return {
+        ...current,
+        [selectedIdea.id]: applyStateUpdate(existing, update),
+      };
+    });
+
+  const updateActiveDraft = (update: (draft: ProductDraft) => ProductDraft) =>
+    setProductDrafts((current) => {
+      const existing = current[selectedIdea.id] ?? emptyProductDraft();
+      return { ...current, [selectedIdea.id]: update(existing) };
+    });
+
+  const setActiveMaterials = (update: StateUpdate<MaterialRow[]>) =>
+    updateActiveDraft((draft) => ({
+      ...draft,
+      materials: applyStateUpdate(draft.materials, update),
+    }));
+
+  const setActiveVariants = (update: StateUpdate<SizeVariant[]>) =>
+    updateActiveDraft((draft) => ({
+      ...draft,
+      variants: applyStateUpdate(draft.variants, update),
+    }));
+
+  const setActivePlanSteps = (update: StateUpdate<PlanStep[]>) =>
+    updateActiveDraft((draft) => ({
+      ...draft,
+      planSteps: applyStateUpdate(draft.planSteps, update),
+    }));
+
+  useEffect(() => {
+    const storedLanguage = window.localStorage.getItem("dessert-valley-language");
+    if (storedLanguage === "en" || storedLanguage === "zh") {
+      const timer = window.setTimeout(() => {
+        setLanguage(storedLanguage);
+        setAgentMessages((current) =>
+          current.length === 1 &&
+          current.some(
+            (message) =>
+              message === agentGreeting("en") ||
+              message === agentGreeting("zh")
+          )
+            ? [agentGreeting(storedLanguage)]
+            : current
+        );
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+    window.localStorage.setItem("dessert-valley-language", language);
+  }, [language]);
+
+  const toggleLanguage = () => {
+    const nextLanguage: Language = language === "en" ? "zh" : "en";
+    setLanguage(nextLanguage);
+    setAgentMessages((current) =>
+      current.length === 1 &&
+      (current[0] === agentGreeting("en") ||
+        current[0] === agentGreeting("zh"))
+        ? [agentGreeting(nextLanguage)]
+        : current
+    );
+  };
 
   useEffect(() => {
     if (!toast) return;
@@ -879,11 +1371,47 @@ export default function Home() {
 
   const selectIdea = (idea: IdeaCard) => {
     setSelectedIdeaId(idea.id);
-    setReferences(inheritedReferences(idea));
-    setRenderResult(null);
-    setViewStyle("exterior");
+    setReferencePackages((current) =>
+      current[idea.id]
+        ? current
+        : { ...current, [idea.id]: inheritedReferences(idea) }
+    );
+    setProductDrafts((current) =>
+      current[idea.id]
+        ? current
+        : { ...current, [idea.id]: emptyProductDraft() }
+    );
+    setViewStyle(renderResults[idea.id]?.view ?? "exterior");
     openStage("design");
-    notify(`${idea.title} opened in the Design Dock`);
+    notify(
+      tr(
+        language,
+        `${idea.title} opened in the Design Dock`,
+        `已在设计坞中打开 ${idea.title}`
+      )
+    );
+  };
+
+  const switchActiveDesign = (idea: IdeaCard) => {
+    setSelectedIdeaId(idea.id);
+    setReferencePackages((current) =>
+      current[idea.id]
+        ? current
+        : { ...current, [idea.id]: inheritedReferences(idea) }
+    );
+    setProductDrafts((current) =>
+      current[idea.id]
+        ? current
+        : { ...current, [idea.id]: emptyProductDraft() }
+    );
+    setViewStyle(renderResults[idea.id]?.view ?? "exterior");
+    notify(
+      tr(
+        language,
+        `${idea.title} is now the active product`,
+        `${idea.title} 已设为当前产品`
+      )
+    );
   };
 
   const handleIdeaImage = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -896,56 +1424,125 @@ export default function Home() {
 
   const addIdea = () => {
     if (!ideaText.trim()) return;
-    const words = ideaText.trim().replace(/[^\w\s-]/g, "").split(/\s+/).slice(0, 4);
+    const words = ideaText
+      .trim()
+      .replace(/[^\p{L}\p{N}\s-]/gu, "")
+      .split(/\s+/)
+      .slice(0, 4);
     const idea: IdeaCard = {
       id: uid(),
-      title: words.join(" ") || "Untitled Dessert",
+      title: words.join(" ") || tr(language, "Untitled Dessert", "未命名甜点"),
       prompt: ideaText.trim(),
       image: ideaImage,
       imageName: ideaImageName,
       tags: ["new", "ready"],
     };
     setIdeas((current) => [idea, ...current]);
+    setReferencePackages((current) => ({
+      ...current,
+      [idea.id]: inheritedReferences(idea),
+    }));
+    setProductDrafts((current) => ({
+      ...current,
+      [idea.id]: emptyProductDraft(),
+    }));
     setIdeaText("");
     setIdeaImage("");
     setIdeaImageName("");
-    notify("Idea added to the gallery");
+    notify(tr(language, "Idea added to the gallery", "创意已添加到画廊"));
   };
 
   const saveReference = (reference: DesignReference) => {
-    setReferences((current) => {
+    setActiveReferences((current) => {
       const exists = current.some((item) => item.id === reference.id);
       return exists
         ? current.map((item) => (item.id === reference.id ? reference : item))
         : [...current, reference];
     });
     setReferenceEditor(null);
-    notify(reference.inherited ? "Reference updated" : "Reference added to the intent package");
+    notify(
+      reference.inherited
+        ? tr(language, "Reference updated", "参考已更新")
+        : tr(
+            language,
+            "Reference added to the intent package",
+            "参考已加入意图包"
+          )
+    );
   };
 
-  const generateRendering = () => {
+  const generateRendering = async () => {
     if (!references.length || rendering) return;
-    setRendering(true);
-    setRenderResult(null);
-    window.setTimeout(() => {
-      setRenderResult({
-        src: viewStyle === "cutaway" ? currentProduct.cutaway : currentProduct.image,
+    const idea = selectedIdea;
+    const ideaId = idea.id;
+    const packageSnapshot = [...references];
+    const signature = intentSignature(packageSnapshot);
+    setRenderingDesignId(ideaId);
+    try {
+      await new Promise((resolve) => window.setTimeout(resolve, 650));
+      const composed = await composeIntentRendering({
+        idea,
+        references: packageSnapshot,
         view: viewStyle,
-        inputs: references.length,
       });
-      setRendering(false);
-      notify("Product rendering ready");
-    }, 1200);
+      const influences = Array.from(
+        new Set(packageSnapshot.map((reference) => reference.kind))
+      );
+      setRenderResults((current) => ({
+        ...current,
+        [ideaId]: {
+          src: composed.src,
+          productId: composed.productId,
+          signature,
+          influences,
+          view: viewStyle,
+          inputs: packageSnapshot.length,
+        },
+      }));
+      notify(tr(language, "Intent-aware rendering ready", "意图渲染已完成"));
+    } catch {
+      notify(
+        tr(
+          language,
+          "The intent package could not be rendered",
+          "暂时无法渲染此意图包"
+        )
+      );
+    } finally {
+      setRenderingDesignId((current) => (current === ideaId ? null : current));
+    }
   };
+
+  const addVariant = () =>
+    setActiveVariants((current) => [
+      ...current,
+      {
+        id: uid(),
+        name: tr(
+          language,
+          `Variant ${current.length + 1}`,
+          `规格 ${current.length + 1}`
+        ),
+        width: "",
+        height: "",
+        depth: "",
+        unit: "cm",
+      },
+    ]);
+
+  const updateVariant = (id: number, patch: Partial<SizeVariant>) =>
+    setActiveVariants((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch } : item))
+    );
 
   const addMaterial = () =>
-    setMaterials((current) => [
+    setActiveMaterials((current) => [
       ...current,
       { id: uid(), name: "", amount: "", unit: "g", note: "" },
     ]);
 
   const updateMaterial = (id: number, patch: Partial<MaterialRow>) =>
-    setMaterials((current) =>
+    setActiveMaterials((current) =>
       current.map((row) => (row.id === id ? { ...row, ...patch } : row))
     );
 
@@ -953,37 +1550,56 @@ export default function Home() {
     const suggestions: PlanStep[] = [
       {
         id: uid(),
-        title: "Prepare the base",
-        instruction:
+        title: tr(language, "Prepare the base", "准备基底"),
+        instruction: tr(
+          language,
           "Scale the components, line the mould and chill the tray. Keep the working area below 22°C.",
+          "称量各组分、铺好模具并冷却托盘。操作区域保持在 22°C 以下。"
+        ),
         image: currentProduct.image,
       },
       {
         id: uid(),
-        title: "Build the centre",
-        instruction:
+        title: tr(language, "Build the centre", "制作夹心"),
+        instruction: tr(
+          language,
           "Pipe the insert into the centre, leaving an even border. Freeze until firm before adding the final layer.",
+          "将夹心挤入中心并保留均匀边缘。冷冻至定型后再加入最后一层。"
+        ),
         image: currentProduct.cutaway,
       },
       {
         id: uid(),
-        title: "Finish and rest",
-        instruction:
+        title: tr(language, "Finish and rest", "完成与静置"),
+        instruction: tr(
+          language,
           "Unmould while frozen, apply the chosen finish, then temper in the refrigerator before serving.",
+          "冷冻状态下脱模并完成表面装饰，随后在冰箱中回温后出品。"
+        ),
         image: currentProduct.image,
       },
     ];
-    setPlanSteps((current) => (current.length ? [...current, ...suggestions] : suggestions));
-    notify("Muse added a three-step starting plan");
+    setActivePlanSteps((current) =>
+      current.length ? [...current, ...suggestions] : suggestions
+    );
+    notify(
+      tr(
+        language,
+        "Muse added a three-step starting plan",
+        "缪斯已添加三步起始方案"
+      )
+    );
   };
 
   const saveStep = (step: PlanStep) => {
-    setPlanSteps((current) => {
+    setActivePlanSteps((current) => {
       const exists = current.some((item) => item.id === step.id);
-      return exists ? current.map((item) => (item.id === step.id ? step : item)) : [...current, step];
+      return exists
+        ? current.map((item) => (item.id === step.id ? step : item))
+        : [...current, step];
     });
     setStepEditor(null);
-    notify("Making step saved");
+    notify(tr(language, "Making step saved", "制作步骤已保存"));
   };
 
   const updateProduction = (id: number, patch: Partial<ProductionRow>) =>
@@ -1001,7 +1617,7 @@ export default function Home() {
         count: 1,
         sizeValue: "8",
         sizeUnit: "cm",
-        style: "New style",
+        style: tr(language, "New style", "新样式"),
       },
     ]);
     setSelectedMenuRows((current) => [...current, nextId]);
@@ -1034,26 +1650,41 @@ export default function Home() {
   );
 
   const exportCards = () => {
+    const exportableReferences = Object.fromEntries(
+      Object.entries(referencePackages).map(([ideaId, packageReferences]) => [
+        ideaId,
+        packageReferences.map(({ asset, ...reference }) => ({
+          ...reference,
+          hasAsset: Boolean(asset),
+        })),
+      ])
+    );
+    const exportableDrafts = Object.fromEntries(
+      Object.entries(productDrafts).map(([ideaId, draft]) => [
+        ideaId,
+        {
+          ...draft,
+          planSteps: draft.planSteps.map(({ image, ...step }) => ({
+            ...step,
+            hasImage: Boolean(image),
+          })),
+        },
+      ])
+    );
     const data = {
-      format: "crumbloom-pixel-card-pack",
+      format: "dessert-valley-card-pack",
       exportedAt: new Date().toISOString(),
       ideas,
       selectedIdeaId,
-      references: references.map(({ asset, ...reference }) => ({
-        ...reference,
-        hasAsset: Boolean(asset),
-      })),
-      size: sizeEnabled ? dimensions : null,
-      materials,
-      includeLoss,
-      planSteps: planSteps.map(({ image, ...step }) => ({ ...step, hasImage: Boolean(image) })),
+      referencePackages: exportableReferences,
+      productDrafts: exportableDrafts,
       productionRows,
     };
     downloadBlob(
       new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
-      "crumbloom-card-pack.json"
+      "dessert-valley-card-pack.json"
     );
-    notify("Card pack exported");
+    notify(tr(language, "Card pack exported", "卡片包已导出"));
   };
 
   const importCards = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -1063,9 +1694,21 @@ export default function Home() {
       const payload = JSON.parse(await file.text());
       if (Array.isArray(payload.ideas)) setIdeas(payload.ideas);
       if (Array.isArray(payload.productionRows)) setProductionRows(payload.productionRows);
-      notify("Card pack imported");
+      if (payload.referencePackages && typeof payload.referencePackages === "object") {
+        setReferencePackages(payload.referencePackages);
+      }
+      if (payload.productDrafts && typeof payload.productDrafts === "object") {
+        setProductDrafts(payload.productDrafts);
+      }
+      notify(tr(language, "Card pack imported", "卡片包已导入"));
     } catch {
-      notify("This card pack could not be read");
+      notify(
+        tr(
+          language,
+          "This card pack could not be read",
+          "无法读取此卡片包"
+        )
+      );
     }
     event.target.value = "";
   };
@@ -1078,12 +1721,13 @@ export default function Home() {
     const cards = selectedHandbookRows
       .map(
         (row) =>
-          `<article><small>${products[row.productId].alias} · ${row.sizeValue}${row.sizeUnit}</small><h2>${products[row.productId].name}</h2><p>${row.style}</p></article>`
+          `<article><small>${products[row.productId].alias} · ${row.sizeValue}${row.sizeUnit}</small><h2>${productName(row.productId, language)}</h2><p>${row.style}</p></article>`
       )
       .join("");
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Crumbloom Dessert Handbook</title><style>body{font-family:Georgia,serif;background:#f4ead3;color:#443622;padding:48px}main{max-width:760px;margin:auto}header{text-align:center;border-bottom:2px solid #8a6a3d;padding-bottom:28px}article{background:#fffaf0;border:1px solid #b89a67;padding:24px;margin:18px 0}small{letter-spacing:.14em;text-transform:uppercase;color:#708552}h2{margin:8px 0}</style></head><body><main><header><p>CRUMBLOOM ATELIER</p><h1>Dessert Handbook</h1></header>${cards}</main></body></html>`;
-    downloadBlob(new Blob([html], { type: "text/html" }), "crumbloom-handbook.html");
-    notify("HTML handbook exported");
+    const handbookTitle = tr(language, "Dessert Handbook", "甜点手册");
+    const html = `<!doctype html><html lang="${language === "zh" ? "zh-CN" : "en"}"><head><meta charset="utf-8"><title>Dessert Valley — ${handbookTitle}</title><style>body{font-family:system-ui,sans-serif;background:#f4dfa8;color:#2f2926;padding:48px}main{max-width:760px;margin:auto}header{text-align:center;border-bottom:3px solid #70452e;padding-bottom:28px}article{background:#fff0bd;border:2px solid #a86f3d;padding:24px;margin:18px 0;box-shadow:5px 5px 0 rgba(74,47,36,.18)}small{letter-spacing:.08em;text-transform:uppercase;color:#3f713d}h1,h2{font-family:monospace}h2{margin:8px 0}</style></head><body><main><header><p>DESSERT VALLEY</p><h1>${handbookTitle}</h1></header>${cards}</main></body></html>`;
+    downloadBlob(new Blob([html], { type: "text/html" }), "dessert-valley-handbook.html");
+    notify(tr(language, "HTML handbook exported", "HTML 手册已导出"));
   };
 
   const exportHandbookPNG = () => {
@@ -1100,28 +1744,38 @@ export default function Home() {
     context.fillStyle = "#52683d";
     context.textAlign = "center";
     context.font = "700 30px monospace";
-    context.fillText("CRUMBLOOM ATELIER", 600, 150);
+    context.fillText("DESSERT VALLEY", 600, 150);
     context.fillStyle = "#443622";
     context.font = "64px Georgia";
-    context.fillText("Dessert Handbook", 600, 245);
+    context.fillText(tr(language, "Dessert Handbook", "甜点手册"), 600, 245);
     selectedHandbookRows.slice(0, 6).forEach((row, index) => {
       const y = 370 + index * 165;
       context.font = "34px Georgia";
-      context.fillText(products[row.productId].name, 600, y);
+      context.fillText(productName(row.productId, language), 600, y);
       context.font = "22px monospace";
       context.fillText(`${row.style} · ${row.sizeValue}${row.sizeUnit}`, 600, y + 50);
     });
-    canvas.toBlob((blob) => blob && downloadBlob(blob, "crumbloom-handbook.png"));
-    notify("Image handbook exported");
+    canvas.toBlob((blob) => blob && downloadBlob(blob, "dessert-valley-handbook.png"));
+    notify(tr(language, "Image handbook exported", "图片手册已导出"));
   };
 
   const sendAgentMessage = () => {
     if (!agentInput.trim() && !agentAudioName) return;
-    const userMessage = agentInput.trim() || `Voice note: ${agentAudioName}`;
+    const userMessage =
+      agentInput.trim() ||
+      tr(
+        language,
+        `Voice note: ${agentAudioName}`,
+        `语音记录：${agentAudioName}`
+      );
     setAgentMessages((current) => [
       ...current,
       userMessage,
-      "Muse suggests testing one small portion first, then recording temperature and texture before scaling.",
+      tr(
+        language,
+        "Muse suggests testing one small portion first, then recording temperature and texture before scaling.",
+        "缪斯建议先测试一个小份，再记录温度与质地后进行放大。"
+      ),
     ]);
     setAgentInput("");
     setAgentAudioName("");
@@ -1129,7 +1783,9 @@ export default function Home() {
 
   return (
     <>
-      <a className="skip-link" href="#atelier-workspace">Skip to atelier workspace</a>
+      <a className="skip-link" href="#atelier-workspace">
+        {tr(language, "Skip to atelier workspace", "跳转到工作区")}
+      </a>
       <div className="pixel-app">
       <div className="world-scenery" aria-hidden="true">
         <span className="pixel-sun" />
@@ -1146,17 +1802,21 @@ export default function Home() {
           className="brand"
           type="button"
           onClick={() => openStage("idea")}
-          aria-label="Crumbloom home"
+          aria-label={tr(language, "Dessert Valley home", "甜点谷首页")}
         >
           <span className="brand-mark"><Sprout size={18} /></span>
           <span>
-            <strong>Crumbloom</strong>
-            <small>riverside pastry studio</small>
+            <strong>Dessert Valley</strong>
+            <small>{tr(language, "riverside pastry studio", "河畔甜点工坊")}</small>
           </span>
         </button>
-        <nav className="stage-nav" aria-label="Dessert workflow">
+        <nav
+          className="stage-nav"
+          aria-label={tr(language, "Dessert workflow", "甜点工作流程")}
+        >
           {stages.map((item, index) => {
             const Icon = item.icon;
+            const itemCopy = stageCopy[language][item.id];
             return (
               <button
                 key={item.id}
@@ -1166,21 +1826,43 @@ export default function Home() {
                 aria-current={item.id === stage ? "step" : undefined}
               >
                 <span><Icon size={15} /></span>
-                <strong>{item.label}</strong>
-                <small>{item.hint}</small>
+                <strong>{itemCopy.label}</strong>
+                <small>{itemCopy.hint}</small>
               </button>
             );
           })}
         </nav>
         <div className="top-actions">
-          <button className="square-button" type="button" onClick={() => importRef.current?.click()} aria-label="Import cards" data-tip="Import cards">
+          <button
+            className="square-button"
+            type="button"
+            onClick={() => importRef.current?.click()}
+            aria-label={tr(language, "Import cards", "导入卡片")}
+            data-tip={tr(language, "Import cards", "导入卡片")}
+          >
             <Import size={16} />
           </button>
           <input ref={importRef} type="file" accept=".json" onChange={importCards} hidden />
-          <button className="square-button" type="button" onClick={exportCards} aria-label="Export cards" data-tip="Export cards">
+          <button
+            className="square-button"
+            type="button"
+            onClick={exportCards}
+            aria-label={tr(language, "Export cards", "导出卡片")}
+            data-tip={tr(language, "Export cards", "导出卡片")}
+          >
             <Download size={16} />
           </button>
-          <span className="avatar">S</span>
+          <button
+            className="language-button"
+            type="button"
+            onClick={toggleLanguage}
+            aria-label={tr(language, "Switch to Chinese", "切换到英文")}
+            data-tip={tr(language, "Switch to Chinese", "切换到英文")}
+          >
+            <Languages size={16} />
+            <span>{language === "en" ? "中文" : "EN"}</span>
+          </button>
+          <span className="avatar">D</span>
         </div>
       </header>
 
@@ -1188,23 +1870,37 @@ export default function Home() {
         {stage === "idea" && (
           <section className="stage-section idea-stage">
             <div className="stage-intro">
-              <span className="stage-kicker"><Sprout size={14} /> Idea garden</span>
-              <h1>Dream a dessert worth making.</h1>
-              <p>Gather a spark, shape it visually, build the recipe, then carry it into bake day.</p>
+              <span className="stage-kicker">
+                <Sprout size={14} /> {tr(language, "Idea garden", "创意花园")}
+              </span>
+              <h1>
+                {tr(language, "Dream a dessert worth making.", "构想一款值得制作的甜点。")}
+              </h1>
+              <p>
+                {tr(
+                  language,
+                  "Gather a spark, shape it visually, build the recipe, then carry it into bake day.",
+                  "收集灵感、塑造视觉、建立配方，再把它带进烘焙日。"
+                )}
+              </p>
             </div>
 
             <div className="idea-composer pixel-panel">
               <textarea
                 value={ideaText}
                 onChange={(event) => setIdeaText(event.target.value)}
-                placeholder="A tiny chestnut tart with maple cream and a little acorn lid…"
-                aria-label="Dessert idea"
+                placeholder={tr(
+                  language,
+                  "A tiny chestnut tart with maple cream and a little acorn lid…",
+                  "一款迷你栗子挞，配枫糖奶油和小橡果造型顶盖……"
+                )}
+                aria-label={tr(language, "Dessert idea", "甜点创意")}
               />
               <div className="composer-footer">
                 <div className="composer-assets">
                   <label className={cn("tool-chip", ideaImage && "active")}>
                     <ImagePlus size={15} />
-                    {ideaImageName || "Add image"}
+                    {ideaImageName || tr(language, "Add image", "添加图片")}
                     <input type="file" accept="image/*" onChange={handleIdeaImage} />
                   </label>
                   {ideaImage && (
@@ -1215,22 +1911,28 @@ export default function Home() {
                         setIdeaImage("");
                         setIdeaImageName("");
                       }}
-                      aria-label="Remove idea image"
+                      aria-label={tr(language, "Remove idea image", "移除创意图片")}
                     >
                       <X size={13} />
                     </button>
                   )}
                 </div>
                 <button className="button primary" type="button" onClick={addIdea} disabled={!ideaText.trim()}>
-                  <Plus size={15} /> Add to gallery
+                  <Plus size={15} /> {tr(language, "Add to gallery", "添加到画廊")}
                 </button>
               </div>
             </div>
 
             <div className="section-heading">
               <div>
-                <h2>Idea gallery</h2>
-                <p>{ideas.length} ready to design</p>
+                <h2>{tr(language, "Idea gallery", "创意画廊")}</h2>
+                <p>
+                  {tr(
+                    language,
+                    `${ideas.length} ready to design`,
+                    `${ideas.length} 个创意可进入设计`
+                  )}
+                </p>
               </div>
             </div>
             <div className="idea-gallery">
@@ -1246,7 +1948,9 @@ export default function Home() {
                     ) : (
                       <span><CakeSlice size={28} /></span>
                     )}
-                    <span className="ready-flag"><Check size={12} /> ready</span>
+                    <span className="ready-flag">
+                      <Check size={12} /> {tr(language, "ready", "就绪")}
+                    </span>
                   </div>
                   <div className="idea-copy">
                     <h3>{idea.title}</h3>
@@ -1255,7 +1959,7 @@ export default function Home() {
                       {idea.tags.map((tag) => <span key={tag}>#{tag}</span>)}
                     </div>
                     <button className="button text-button" type="button" onClick={() => selectIdea(idea)}>
-                      Open design dock <ArrowRight size={15} />
+                      {tr(language, "Open design dock", "打开设计坞")} <ArrowRight size={15} />
                     </button>
                   </div>
                 </article>
@@ -1268,14 +1972,22 @@ export default function Home() {
           <section className="stage-section design-stage">
             <div className="stage-intro split">
               <div>
-                <span className="stage-kicker"><Pencil size={14} /> Design dock</span>
-                <h1>Shape the feeling into form.</h1>
-                <p>Collect only the references that matter. Together, they become one clear rendering intent.</p>
+                <span className="stage-kicker">
+                  <Pencil size={14} /> {tr(language, "Design dock", "设计坞")}
+                </span>
+                <h1>{tr(language, "Shape the feeling into form.", "把感受塑造成形。")}</h1>
+                <p>
+                  {tr(
+                    language,
+                    "Collect only the references that matter. Together, they become one clear rendering intent.",
+                    "只收集真正重要的参考，让它们共同形成清晰的渲染意图。"
+                  )}
+                </p>
               </div>
               <button className="selected-idea" type="button" onClick={() => openStage("idea")}>
                 {selectedIdea.image ? <img src={selectedIdea.image} alt="" /> : <CakeSlice size={19} />}
                 <span>
-                  <small>Designing</small>
+                  <small>{tr(language, "Designing", "正在设计")}</small>
                   <strong>{selectedIdea.title}</strong>
                 </span>
               </button>
@@ -1287,8 +1999,14 @@ export default function Home() {
                   <div>
                     <span className="panel-icon"><PackageCheck size={17} /></span>
                     <span>
-                      <strong>Intent package</strong>
-                      <small>{references.length} references linked</small>
+                      <strong>{tr(language, "Intent package", "意图包")}</strong>
+                      <small>
+                        {tr(
+                          language,
+                          `${references.length} references linked`,
+                          `已关联 ${references.length} 个参考`
+                        )}
+                      </small>
                     </span>
                   </div>
                   <div className="dock-add-wrap">
@@ -1298,13 +2016,14 @@ export default function Home() {
                       onClick={() => setDockOpen((current) => !current)}
                       aria-expanded={dockOpen}
                     >
-                      <Plus size={18} /> Add
+                      <Plus size={18} /> {tr(language, "Add", "添加")}
                       <ChevronDown size={14} />
                     </button>
                     {dockOpen && (
                       <div className="dock-menu" role="menu">
                         {(Object.keys(referenceMeta) as ReferenceKind[]).map((kind) => {
                           const meta = referenceMeta[kind];
+                          const metaCopy = referenceCopy[language][kind];
                           const Icon = meta.icon;
                           return (
                             <button
@@ -1318,8 +2037,8 @@ export default function Home() {
                             >
                               <span><Icon size={16} /></span>
                               <span>
-                                <strong>{meta.label}</strong>
-                                <small>{meta.helper}</small>
+                                <strong>{metaCopy.label}</strong>
+                                <small>{metaCopy.helper}</small>
                               </span>
                             </button>
                           );
@@ -1332,6 +2051,7 @@ export default function Home() {
                 <div className="reference-dock-grid">
                   {references.map((reference) => {
                     const meta = referenceMeta[reference.kind];
+                    const metaCopy = referenceCopy[language][reference.kind];
                     const Icon = meta.icon;
                     return (
                       <article className="reference-card" key={reference.id}>
@@ -1339,7 +2059,11 @@ export default function Home() {
                           {reference.asset && (reference.kind === "image" || reference.kind === "canvas") ? (
                             <img
                               src={reference.asset}
-                              alt={`${reference.title} reference`}
+                              alt={tr(
+                                language,
+                                `${reference.title} reference`,
+                                `${reference.title} 参考`
+                              )}
                               decoding="async"
                             />
                           ) : reference.kind === "audio" && reference.asset ? (
@@ -1347,14 +2071,21 @@ export default function Home() {
                           ) : (
                             <Icon size={23} />
                           )}
-                          <span>{meta.label}</span>
+                          <span>{metaCopy.label}</span>
                         </div>
                         <div className="reference-card-copy">
                           <div>
                             <strong>{reference.title}</strong>
-                            {reference.inherited && <small className="inherited-pill">from idea</small>}
+                            {reference.inherited && (
+                              <small className="inherited-pill">
+                                {tr(language, "from idea", "来自创意")}
+                              </small>
+                            )}
                           </div>
-                          <p>{reference.content || "Visual reference"}</p>
+                          <p>
+                            {reference.content ||
+                              tr(language, "Visual reference", "视觉参考")}
+                          </p>
                           {reference.kind === "audio" && reference.asset && (
                             <audio controls src={reference.asset} />
                           )}
@@ -1364,7 +2095,11 @@ export default function Home() {
                             className="square-button mini"
                             type="button"
                             onClick={() => setReferenceEditor({ kind: reference.kind, existing: reference })}
-                            aria-label={`Edit ${reference.title}`}
+                            aria-label={tr(
+                              language,
+                              `Edit ${reference.title}`,
+                              `编辑 ${reference.title}`
+                            )}
                           >
                             <Pencil size={13} />
                           </button>
@@ -1372,11 +2107,15 @@ export default function Home() {
                             className="square-button mini danger"
                             type="button"
                             onClick={() =>
-                              setReferences((current) =>
+                              setActiveReferences((current) =>
                                 current.filter((item) => item.id !== reference.id)
                               )
                             }
-                            aria-label={`Delete ${reference.title}`}
+                            aria-label={tr(
+                              language,
+                              `Delete ${reference.title}`,
+                              `删除 ${reference.title}`
+                            )}
                           >
                             <Trash2 size={13} />
                           </button>
@@ -1390,7 +2129,7 @@ export default function Home() {
                     onClick={() => setDockOpen(true)}
                   >
                     <Plus size={19} />
-                    <span>Add another reference</span>
+                    <span>{tr(language, "Add another reference", "继续添加参考")}</span>
                   </button>
                 </div>
               </section>
@@ -1400,55 +2139,105 @@ export default function Home() {
                   <div>
                     <span className="panel-icon muse"><WandSparkles size={17} /></span>
                     <span>
-                      <strong>Pastry Muse</strong>
-                      <small>Product rendering</small>
+                      <strong>{tr(language, "Pastry Muse", "甜点缪斯")}</strong>
+                      <small>{tr(language, "Product rendering", "产品渲染")}</small>
                     </span>
                   </div>
                 </header>
-                <div className="view-switch" role="group" aria-label="Rendering view">
+                <div
+                  className="view-switch"
+                  role="group"
+                  aria-label={tr(language, "Rendering view", "渲染视图")}
+                >
                   <button
                     className={cn(viewStyle === "exterior" && "active")}
                     type="button"
                     onClick={() => setViewStyle("exterior")}
                   >
-                    Exterior
+                    {tr(language, "Exterior", "外观")}
                   </button>
                   <button
                     className={cn(viewStyle === "cutaway" && "active")}
                     type="button"
                     onClick={() => setViewStyle("cutaway")}
                   >
-                    Cutaway
+                    {tr(language, "Cutaway", "剖面")}
                   </button>
                 </div>
                 <div className={cn("muse-result", rendering && "loading")}>
                   {rendering ? (
                     <div className="render-loader">
                       <LoaderCircle size={25} />
-                      <strong>Reading {references.length} references</strong>
-                      <small>shape · color · texture · structure</small>
+                      <strong>
+                        {tr(
+                          language,
+                          `Reading ${references.length} references`,
+                          `正在读取 ${references.length} 个参考`
+                        )}
+                      </strong>
+                      <small>
+                        {tr(
+                          language,
+                          "shape · color · texture · structure",
+                          "形状 · 颜色 · 质地 · 结构"
+                        )}
+                      </small>
                     </div>
                   ) : renderResult ? (
                     <>
                       <img
                         src={renderResult.src}
-                        alt={`${renderResult.view} product rendering of ${selectedIdea.title}`}
-                        className={cn(renderResult.view === "cutaway" && variant !== "moon" && "simulated-cutaway")}
+                        alt={tr(
+                          language,
+                          `${renderResult.view} product rendering of ${selectedIdea.title}`,
+                          `${selectedIdea.title} 的${renderResult.view === "cutaway" ? "剖面" : "外观"}产品渲染图`
+                        )}
+                        className={cn(
+                          renderResult.view === "cutaway" &&
+                            renderResult.productId !== "moon" &&
+                            "simulated-cutaway"
+                        )}
                       />
-                      <span className="view-badge">{renderResult.view}</span>
+                      <span className="view-badge">
+                        {renderResult.view === "cutaway"
+                          ? tr(language, "cutaway", "剖面")
+                          : tr(language, "exterior", "外观")}
+                      </span>
                     </>
                   ) : (
                     <div className="result-empty">
                       <Sparkles size={25} />
-                      <strong>No rendering yet</strong>
-                      <small>Choose a view, then send the intent package.</small>
+                      <strong>{tr(language, "No rendering yet", "尚未渲染")}</strong>
+                      <small>
+                        {tr(
+                          language,
+                          "Choose a view, then send the intent package.",
+                          "选择视图后发送意图包。"
+                        )}
+                      </small>
                     </div>
                   )}
                 </div>
                 {renderResult && (
                   <div className="render-summary">
                     <Layers3 size={14} />
-                    <span>{renderResult.inputs} references combined into this {renderResult.view} view</span>
+                    <span>
+                      {renderingIsStale
+                        ? tr(
+                            language,
+                            "View or intent package changed — render again to update this image.",
+                            "视图或意图包已变化，请重新渲染以更新图片。"
+                          )
+                        : tr(
+                            language,
+                            `${renderResult.inputs} references combined · ${renderResult.influences.join(
+                              " + "
+                            )}`,
+                            `已合并 ${renderResult.inputs} 个参考 · ${renderResult.influences
+                              .map((kind) => referenceCopy.zh[kind].label)
+                              .join(" + ")}`
+                          )}
+                    </span>
                   </div>
                 )}
                 <button
@@ -1458,10 +2247,14 @@ export default function Home() {
                   disabled={rendering || references.length === 0}
                 >
                   {rendering ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
-                  Product rendering
+                  {rendering
+                    ? tr(language, "Rendering intent…", "正在渲染意图……")
+                    : renderingIsStale
+                      ? tr(language, "Update rendering", "更新渲染")
+                      : tr(language, "Product rendering", "产品渲染")}
                 </button>
                 <button className="button ghost full" type="button" onClick={() => openStage("product")}>
-                  Continue to Product <ArrowRight size={15} />
+                  {tr(language, "Continue to Product", "继续到产品")} <ArrowRight size={15} />
                 </button>
               </aside>
             </div>
@@ -1471,71 +2264,209 @@ export default function Home() {
         {stage === "product" && (
           <section className="stage-section product-stage">
             <div className="stage-intro">
-              <span className="stage-kicker"><CakeSlice size={14} /> Product bench</span>
-              <h1>Turn the sketch into a recipe.</h1>
-              <p>Define only what this dessert needs: its scale, materials, handling notes and making steps.</p>
+              <span className="stage-kicker">
+                <CakeSlice size={14} /> {tr(language, "Product bench", "产品工作台")}
+              </span>
+              <h1>
+                {tr(language, "Turn the sketch into a recipe.", "把设计转化为配方。")}
+              </h1>
+              <p>
+                {tr(
+                  language,
+                  "Choose an active design, define its variants, then build the materials and making plan.",
+                  "选择当前设计、定义多个规格，再建立材料用量与制作方案。"
+                )}
+              </p>
             </div>
+
+            <section className="active-design-switcher pixel-panel">
+              <div className="section-heading inline">
+                <div>
+                  <h2>{tr(language, "Active design", "当前设计")}</h2>
+                  <p>
+                    {tr(
+                      language,
+                      "Switch products without losing each design’s recipe draft.",
+                      "切换产品时，每个设计的配方草稿都会保留。"
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="active-design-list" role="list">
+                {ideas.map((idea) => {
+                  const ideaRender = renderResults[idea.id];
+                  const active = idea.id === selectedIdea.id;
+                  return (
+                    <button
+                      className={cn("active-design-card", active && "active")}
+                      type="button"
+                      key={idea.id}
+                      onClick={() => switchActiveDesign(idea)}
+                      aria-pressed={active}
+                    >
+                      {idea.image ? (
+                        <img src={ideaRender?.src || idea.image} alt="" />
+                      ) : (
+                        <span className="active-design-placeholder">
+                          <CakeSlice size={20} />
+                        </span>
+                      )}
+                      <span>
+                        <strong>{idea.title}</strong>
+                        <small>
+                          {ideaRender
+                            ? tr(language, "render ready", "渲染已完成")
+                            : tr(language, "design draft", "设计草稿")}
+                        </small>
+                      </span>
+                      {active && <Check size={15} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
 
             <div className="product-overview pixel-panel">
               <div className="product-mini-render">
                 <img
                   src={renderResult?.src || currentProduct.image}
-                  alt={`${selectedIdea.title} product rendering`}
+                  alt={tr(
+                    language,
+                    `${selectedIdea.title} product rendering`,
+                    `${selectedIdea.title} 产品渲染图`
+                  )}
                 />
               </div>
               <div>
-                <span className="micro-label">Active design</span>
+                <span className="micro-label">
+                  {tr(language, "Recipe for", "当前配方")}
+                </span>
                 <h2>{selectedIdea.title}</h2>
-                <p>Built as a flexible single-serve recipe by default.</p>
+                <p>
+                  {tr(
+                    language,
+                    renderResult
+                      ? "Using the latest intent-aware product rendering."
+                      : "No product rendering yet; using the idea image as a placeholder.",
+                    renderResult
+                      ? "正在使用最新的意图渲染结果。"
+                      : "尚无产品渲染，暂时使用创意图片。"
+                  )}
+                </p>
               </div>
-              <label className="toggle-row">
-                <input
-                  type="checkbox"
-                  checked={sizeEnabled}
-                  onChange={(event) => setSizeEnabled(event.target.checked)}
-                />
-                <span />
-                Define finished size
-              </label>
+              <button className="button secondary" type="button" onClick={addVariant}>
+                <Plus size={15} /> {tr(language, "Add variants", "添加规格")}
+              </button>
             </div>
 
-            {sizeEnabled && (
+            {sizeVariants.length > 0 && (
               <section className="size-builder pixel-panel">
                 <div className="section-heading inline">
                   <div>
-                    <h2>Finished size</h2>
-                    <p>Use any dimensions that describe this piece.</p>
+                    <h2>{tr(language, "Size variants", "尺寸规格")}</h2>
+                    <p>
+                      {tr(
+                        language,
+                        "Material factors are calculated from dimensions relative to the first variant.",
+                        "材料倍率会根据各规格相对于首个规格的尺寸自动计算。"
+                      )}
+                    </p>
                   </div>
+                  <button className="button secondary" type="button" onClick={addVariant}>
+                    <Plus size={15} /> {tr(language, "Add variant", "添加规格")}
+                  </button>
                 </div>
-                <div className="dimension-fields">
-                  {(["width", "height", "depth"] as const).map((field) => (
-                    <label className="field" key={field}>
-                      <span>{field}</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        placeholder="—"
-                        value={dimensions[field]}
-                        onChange={(event) =>
-                          setDimensions((current) => ({ ...current, [field]: event.target.value }))
-                        }
-                      />
-                    </label>
-                  ))}
-                  <label className="field">
-                    <span>unit</span>
-                    <select
-                      value={dimensions.unit}
-                      onChange={(event) =>
-                        setDimensions((current) => ({ ...current, unit: event.target.value }))
-                      }
-                    >
-                      <option>cm</option>
-                      <option>mm</option>
-                      <option>in</option>
-                    </select>
-                  </label>
+                <div className="variant-grid">
+                  {sizeVariants.map((sizeVariant, index) => {
+                    const scale =
+                      variantScales.find((item) => item.id === sizeVariant.id)
+                        ?.scale ?? 1;
+                    return (
+                      <article className="variant-card" key={sizeVariant.id}>
+                        <header>
+                          <label>
+                            <span className="sr-only">
+                              {tr(language, "Variant name", "规格名称")}
+                            </span>
+                            <input
+                              value={sizeVariant.name}
+                              onChange={(event) =>
+                                updateVariant(sizeVariant.id, {
+                                  name: event.target.value,
+                                })
+                              }
+                              aria-label={tr(language, "Variant name", "规格名称")}
+                            />
+                          </label>
+                          <span className="variant-factor">
+                            {index === 0
+                              ? tr(language, "BASE", "基准")
+                              : `×${scale.toFixed(2)}`}
+                          </span>
+                          <button
+                            className="square-button mini danger"
+                            type="button"
+                            onClick={() =>
+                              setActiveVariants((current) =>
+                                current.filter((item) => item.id !== sizeVariant.id)
+                              )
+                            }
+                            aria-label={tr(
+                              language,
+                              `Delete ${sizeVariant.name}`,
+                              `删除 ${sizeVariant.name}`
+                            )}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </header>
+                        <div className="variant-dimensions">
+                          {(["width", "height", "depth"] as const).map((field) => (
+                            <label className="field" key={field}>
+                              <span>
+                                {tr(
+                                  language,
+                                  field,
+                                  field === "width"
+                                    ? "宽"
+                                    : field === "height"
+                                      ? "高"
+                                      : "深"
+                                )}
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.1"
+                                placeholder="—"
+                                value={sizeVariant[field]}
+                                onChange={(event) =>
+                                  updateVariant(sizeVariant.id, {
+                                    [field]: event.target.value,
+                                  })
+                                }
+                              />
+                            </label>
+                          ))}
+                          <label className="field">
+                            <span>{tr(language, "unit", "单位")}</span>
+                            <select
+                              value={sizeVariant.unit}
+                              onChange={(event) =>
+                                updateVariant(sizeVariant.id, {
+                                  unit: event.target.value,
+                                })
+                              }
+                            >
+                              <option>cm</option>
+                              <option>mm</option>
+                              <option>in</option>
+                            </select>
+                          </label>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               </section>
             )}
@@ -1543,29 +2474,62 @@ export default function Home() {
             <section className="materials-panel pixel-panel">
               <div className="section-heading inline">
                 <div>
-                  <h2>Material usage</h2>
-                  <p>Empty by default. Build the recipe in your own units.</p>
+                  <h2>{tr(language, "Material usage", "材料用量")}</h2>
+                  <p>
+                    {sizeVariants.length
+                      ? tr(
+                          language,
+                          "Enter the base amount once; every variant updates automatically.",
+                          "只需输入一次基准用量，各规格会自动更新。"
+                        )
+                      : tr(
+                          language,
+                          "Add materials in your own units. Variants are optional.",
+                          "使用自定义单位添加材料；尺寸规格为可选项。"
+                        )}
+                  </p>
                 </div>
                 <button className="button secondary" type="button" onClick={addMaterial}>
-                  <Plus size={15} /> Add material
+                  <Plus size={15} /> {tr(language, "Add material", "添加材料")}
                 </button>
               </div>
               {materials.length === 0 ? (
                 <button className="empty-state compact" type="button" onClick={addMaterial}>
                   <Plus size={19} />
-                  <strong>Add the first material</strong>
-                  <small>No preset quantities or cake-sized assumptions.</small>
+                  <strong>{tr(language, "Add the first material", "添加第一项材料")}</strong>
+                  <small>
+                    {tr(
+                      language,
+                      "No preset quantities or cake-sized assumptions.",
+                      "不预设用量，也不假定甜点尺寸。"
+                    )}
+                  </small>
                 </button>
               ) : (
                 <div className="editable-table-wrap">
-                  <table className="editable-table">
+                  <table
+                    className="editable-table"
+                    style={{ minWidth: 720 + sizeVariants.length * 112 }}
+                  >
                     <thead>
                       <tr>
-                        <th>Material</th>
-                        <th>Amount</th>
-                        <th>Unit</th>
-                        <th>Note</th>
-                        <th aria-label="Actions" />
+                        <th>{tr(language, "Material", "材料")}</th>
+                        <th>{tr(language, "Base amount", "基准用量")}</th>
+                        <th>{tr(language, "Unit", "单位")}</th>
+                        {sizeVariants.map((sizeVariant) => {
+                          const scale =
+                            variantScales.find(
+                              (item) => item.id === sizeVariant.id
+                            )?.scale ?? 1;
+                          return (
+                            <th key={sizeVariant.id}>
+                              {sizeVariant.name}
+                              <small>×{scale.toFixed(2)}</small>
+                            </th>
+                          );
+                        })}
+                        <th>{tr(language, "Note", "备注")}</th>
+                        <th aria-label={tr(language, "Actions", "操作")} />
                       </tr>
                     </thead>
                     <tbody>
@@ -1575,7 +2539,11 @@ export default function Home() {
                             <input
                               value={row.name}
                               onChange={(event) => updateMaterial(row.id, { name: event.target.value })}
-                              placeholder="e.g. Pear purée"
+                              placeholder={tr(
+                                language,
+                                "e.g. Pear purée",
+                                "例如：梨果泥"
+                              )}
                             />
                           </td>
                           <td>
@@ -1595,11 +2563,26 @@ export default function Home() {
                               placeholder="g"
                             />
                           </td>
+                          {sizeVariants.map((sizeVariant) => {
+                            const scale =
+                              variantScales.find(
+                                (item) => item.id === sizeVariant.id
+                              )?.scale ?? 1;
+                            const adjusted = Number(row.amount) * scale;
+                            return (
+                              <td className="material-calculation" key={sizeVariant.id}>
+                                {row.amount && Number.isFinite(adjusted)
+                                  ? adjusted.toFixed(adjusted < 10 ? 2 : 1)
+                                  : "—"}
+                                {row.amount && <small>{row.unit}</small>}
+                              </td>
+                            );
+                          })}
                           <td>
                             <input
                               value={row.note}
                               onChange={(event) => updateMaterial(row.id, { note: event.target.value })}
-                              placeholder="optional"
+                              placeholder={tr(language, "optional", "可选")}
                             />
                           </td>
                           <td>
@@ -1607,9 +2590,15 @@ export default function Home() {
                               className="square-button mini danger"
                               type="button"
                               onClick={() =>
-                                setMaterials((current) => current.filter((item) => item.id !== row.id))
+                                setActiveMaterials((current) =>
+                                  current.filter((item) => item.id !== row.id)
+                                )
                               }
-                              aria-label={`Delete ${row.name || "material"}`}
+                              aria-label={tr(
+                                language,
+                                `Delete ${row.name || "material"}`,
+                                `删除 ${row.name || "材料"}`
+                              )}
                             >
                               <Trash2 size={13} />
                             </button>
@@ -1620,47 +2609,40 @@ export default function Home() {
                   </table>
                 </div>
               )}
-              <label className="loss-option">
-                <input
-                  type="checkbox"
-                  checked={includeLoss}
-                  onChange={(event) => setIncludeLoss(event.target.checked)}
-                />
-                <span><strong>Include 6% handling loss</strong><small>Optional; applied only when you choose it.</small></span>
-              </label>
-              {materials.length > 0 && includeLoss && (
-                <div className="loss-preview">
-                  {materials
-                    .filter((row) => row.amount)
-                    .map((row) => (
-                      <span key={row.id}>
-                        {row.name || "Material"}: {(Number(row.amount) * 1.06).toFixed(1)} {row.unit}
-                      </span>
-                    ))}
-                </div>
-              )}
             </section>
 
             <section className="making-plan pixel-panel">
               <div className="section-heading inline">
                 <div>
-                  <h2>Making plan</h2>
-                  <p>Each operating step can pair instructions with a visual.</p>
+                  <h2>{tr(language, "Making plan", "制作方案")}</h2>
+                  <p>
+                    {tr(
+                      language,
+                      "Each operating step can pair instructions with a visual.",
+                      "每个操作步骤都可以同时包含文字与图片。"
+                    )}
+                  </p>
                 </div>
                 <div className="section-actions">
                   <button className="button ghost" type="button" onClick={advisePlan}>
-                    <WandSparkles size={15} /> AI advise
+                    <WandSparkles size={15} /> {tr(language, "AI advise", "AI 建议")}
                   </button>
                   <button className="button secondary" type="button" onClick={() => setStepEditor("new")}>
-                    <Plus size={15} /> Add step
+                    <Plus size={15} /> {tr(language, "Add step", "添加步骤")}
                   </button>
                 </div>
               </div>
               {planSteps.length === 0 ? (
                 <div className="empty-state">
                   <BookOpen size={23} />
-                  <strong>No making steps yet</strong>
-                  <small>Add your own operating plan or let Muse create a starting sequence.</small>
+                  <strong>{tr(language, "No making steps yet", "尚无制作步骤")}</strong>
+                  <small>
+                    {tr(
+                      language,
+                      "Add your own operating plan or let Muse create a starting sequence.",
+                      "添加自己的操作方案，或让缪斯生成起始流程。"
+                    )}
+                  </small>
                 </div>
               ) : (
                 <div className="step-list">
@@ -1669,7 +2651,15 @@ export default function Home() {
                       <div className="step-number">{String(index + 1).padStart(2, "0")}</div>
                       <div className="step-visual">
                         {step.image ? (
-                          <img src={step.image} alt={`${step.title} step visual`} decoding="async" />
+                          <img
+                            src={step.image}
+                            alt={tr(
+                              language,
+                              `${step.title} step visual`,
+                              `${step.title} 步骤图片`
+                            )}
+                            decoding="async"
+                          />
                         ) : (
                           <ImagePlus size={21} />
                         )}
@@ -1679,14 +2669,31 @@ export default function Home() {
                         <p>{step.instruction}</p>
                       </div>
                       <div className="card-actions">
-                        <button className="square-button mini" type="button" onClick={() => setStepEditor(step)} aria-label={`Edit ${step.title}`}>
+                        <button
+                          className="square-button mini"
+                          type="button"
+                          onClick={() => setStepEditor(step)}
+                          aria-label={tr(
+                            language,
+                            `Edit ${step.title}`,
+                            `编辑 ${step.title}`
+                          )}
+                        >
                           <Pencil size={13} />
                         </button>
                         <button
                           className="square-button mini danger"
                           type="button"
-                          onClick={() => setPlanSteps((current) => current.filter((item) => item.id !== step.id))}
-                          aria-label={`Delete ${step.title}`}
+                          onClick={() =>
+                            setActivePlanSteps((current) =>
+                              current.filter((item) => item.id !== step.id)
+                            )
+                          }
+                          aria-label={tr(
+                            language,
+                            `Delete ${step.title}`,
+                            `删除 ${step.title}`
+                          )}
                         >
                           <Trash2 size={13} />
                         </button>
@@ -1699,7 +2706,7 @@ export default function Home() {
 
             <div className="stage-end">
               <button className="button primary" type="button" onClick={() => openStage("bake")}>
-                Save product card <ArrowRight size={15} />
+                {tr(language, "Save product card", "保存产品卡")} <ArrowRight size={15} />
               </button>
             </div>
           </section>
@@ -1708,9 +2715,17 @@ export default function Home() {
         {stage === "bake" && (
           <section className="stage-section bake-stage">
             <div className="stage-intro">
-              <span className="stage-kicker"><Wheat size={14} /> Bake day</span>
-              <h1>Plan the bake. Share the story.</h1>
-              <p>Scale production with confidence, then turn selected styles into a keepsake table handbook.</p>
+              <span className="stage-kicker">
+                <Wheat size={14} /> {tr(language, "Bake day", "烘焙日")}
+              </span>
+              <h1>{tr(language, "Plan the bake. Share the story.", "规划烘焙，分享故事。")}</h1>
+              <p>
+                {tr(
+                  language,
+                  "Scale production with confidence, then turn selected styles into a keepsake table handbook.",
+                  "轻松安排生产数量，再把选中的甜点风格制作成可珍藏的桌面手册。"
+                )}
+              </p>
             </div>
 
             <div className="bake-switch" role="tablist">
@@ -1722,7 +2737,10 @@ export default function Home() {
                 onClick={() => setBakeMode("chef")}
               >
                 <CircleDollarSign size={16} />
-                <span><strong>For chefs</strong><small>Quantities & cost</small></span>
+                <span>
+                  <strong>{tr(language, "For chefs", "厨师模式")}</strong>
+                  <small>{tr(language, "Quantities & cost", "数量与成本")}</small>
+                </span>
               </button>
               <button
                 type="button"
@@ -1732,7 +2750,10 @@ export default function Home() {
                 onClick={() => setBakeMode("diner")}
               >
                 <BookOpen size={16} />
-                <span><strong>For diners</strong><small>Dessert handbook</small></span>
+                <span>
+                  <strong>{tr(language, "For diners", "食客模式")}</strong>
+                  <small>{tr(language, "Dessert handbook", "甜点手册")}</small>
+                </span>
               </button>
             </div>
 
@@ -1741,20 +2762,44 @@ export default function Home() {
                 <section className="production-panel pixel-panel">
                   <div className="section-heading inline">
                     <div>
-                      <h2>Production quantities</h2>
-                      <p>Duplicate a dessert to make another style or size.</p>
+                      <h2>{tr(language, "Production quantities", "生产数量")}</h2>
+                      <p>
+                        {tr(
+                          language,
+                          "Create a batch for every dessert style and serving size.",
+                          "为每一种甜点风格与成品尺寸建立独立批次。"
+                        )}
+                      </p>
                     </div>
                     <button className="button secondary compact-button" type="button" onClick={addProductionStyle}>
-                      <Plus size={14} /> Style batch
+                      <Plus size={14} /> {tr(language, "Style batch", "添加风格批次")}
                     </button>
+                  </div>
+                  <div className="production-column-headings" aria-hidden="true">
+                    <span />
+                    <span>{tr(language, "Dessert", "甜点")}</span>
+                    <span>{tr(language, "Style", "风格")}</span>
+                    <span>{tr(language, "Qty", "数量")}</span>
+                    <span>{tr(language, "Finished size", "成品尺寸")}</span>
+                    <span />
                   </div>
                   <div className="production-list">
                     {productionRows.map((row) => {
                       const product = products[row.productId];
+                      const localizedProductName = productName(row.productId, language);
                       return (
                         <article className="production-row" key={row.id}>
-                          <img src={product.image} alt={`${product.name} product rendering`} />
-                          <div className="production-name">
+                          <img
+                            className="production-thumb"
+                            src={product.image}
+                            alt={tr(
+                              language,
+                              `${localizedProductName} product rendering`,
+                              `${localizedProductName} 产品渲染图`
+                            )}
+                          />
+                          <label className="production-field product-field">
+                            <span>{tr(language, "Dessert", "甜点")}</span>
                             <select
                               value={row.productId}
                               onChange={(event) =>
@@ -1762,21 +2807,28 @@ export default function Home() {
                                   productId: event.target.value as ProductionRow["productId"],
                                 })
                               }
-                              aria-label="Dessert card"
+                              aria-label={tr(language, "Dessert card", "甜点卡")}
                             >
                               {(Object.keys(products) as Array<keyof typeof products>).map((id) => (
-                                <option value={id} key={id}>{products[id].name}</option>
+                                <option value={id} key={id}>{productName(id, language)}</option>
                               ))}
                             </select>
+                          </label>
+                          <label className="production-field style-field">
+                            <span>{tr(language, "Style", "风格")}</span>
                             <input
                               value={row.style}
                               onChange={(event) => updateProduction(row.id, { style: event.target.value })}
-                              placeholder="Style name"
-                              aria-label={`${product.name} style`}
+                              placeholder={tr(language, "Style name", "风格名称")}
+                              aria-label={tr(
+                                language,
+                                `${localizedProductName} style`,
+                                `${localizedProductName} 风格`
+                              )}
                             />
-                          </div>
-                          <label>
-                            <span>qty</span>
+                          </label>
+                          <label className="production-field qty-field">
+                            <span>{tr(language, "Qty", "数量")}</span>
                             <input
                               type="number"
                               min="0"
@@ -1786,8 +2838,8 @@ export default function Home() {
                               }
                             />
                           </label>
-                          <label className="production-size">
-                            <span>size</span>
+                          <label className="production-field production-size">
+                            <span>{tr(language, "Finished size", "成品尺寸")}</span>
                             <input
                               type="number"
                               min="0"
@@ -1817,7 +2869,11 @@ export default function Home() {
                                 current.filter((item) => item.id !== row.id)
                               )
                             }
-                            aria-label={`Remove ${product.name} batch`}
+                            aria-label={tr(
+                              language,
+                              `Remove ${localizedProductName} batch`,
+                              `删除 ${localizedProductName} 批次`
+                            )}
                           >
                             <Trash2 size={13} />
                           </button>
@@ -1830,37 +2886,46 @@ export default function Home() {
                 <section className="cost-panel pixel-panel">
                   <div className="section-heading inline">
                     <div>
-                      <h2>Consolidated materials & cost sheet</h2>
-                      <p>Aliases keep the sheet compact. Hover any alias for the full name.</p>
+                      <h2>{tr(language, "Consolidated materials & cost sheet", "合并材料与成本表")}</h2>
+                      <p>
+                        {tr(
+                          language,
+                          "Aliases keep the sheet compact. Hover any alias for the full name.",
+                          "简称让表格保持紧凑；悬停即可查看完整名称。"
+                        )}
+                      </p>
                     </div>
                   </div>
                   <div className="cost-table-scroll">
                     <table className="cost-table">
                       <thead>
                         <tr>
-                          <th>Material</th>
+                          <th>{tr(language, "Material", "材料")}</th>
                           {(Object.keys(products) as Array<keyof typeof products>).map((id) => (
                             <th key={id}>
                               <button
                                 type="button"
                                 className="alias-tip"
-                                data-full-name={products[id].name}
-                                title={products[id].name}
-                                aria-label={`${products[id].alias} — ${products[id].name}`}
+                                data-full-name={productName(id, language)}
+                                title={productName(id, language)}
+                                aria-label={`${products[id].alias} — ${productName(id, language)}`}
                               >
                                 {products[id].alias}
                               </button>
                             </th>
                           ))}
-                          <th>Total</th>
-                          <th>Unit price</th>
-                          <th>Cost</th>
+                          <th>{tr(language, "Total", "总量")}</th>
+                          <th>{tr(language, "Unit price", "单价")}</th>
+                          <th>{tr(language, "Cost", "成本")}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {consolidateRows.map((row, index) => (
                           <tr key={row.name}>
-                            <td>{row.name}<small>{row.unit}</small></td>
+                            <td>
+                              {tr(language, row.name, row.nameZh)}
+                              <small>{row.unit}</small>
+                            </td>
                             <td>{row.amounts.moon.toFixed(2)}</td>
                             <td>{row.amounts.berry.toFixed(2)}</td>
                             <td>{row.amounts.garden.toFixed(2)}</td>
@@ -1889,7 +2954,7 @@ export default function Home() {
                     </table>
                   </div>
                   <div className="cost-total">
-                    <span>Total ingredient estimate</span>
+                    <span>{tr(language, "Total ingredient estimate", "材料成本估算")}</span>
                     <strong>${consolidateRows.reduce((sum, row) => sum + row.cost, 0).toFixed(2)}</strong>
                   </div>
                 </section>
@@ -1901,8 +2966,14 @@ export default function Home() {
                 <section className="handbook-gallery">
                   <div className="section-heading inline">
                     <div>
-                      <h2>Handbook cards</h2>
-                      <p>Every style batch is its own configurable card.</p>
+                      <h2>{tr(language, "Handbook cards", "手册卡片")}</h2>
+                      <p>
+                        {tr(
+                          language,
+                          "Every style batch is its own configurable card.",
+                          "每个风格批次都是一张可独立配置的卡片。"
+                        )}
+                      </p>
                     </div>
                   </div>
                   <div className="handbook-card-grid">
@@ -1921,23 +2992,27 @@ export default function Home() {
                                   : [...current, row.id]
                               )
                             }
-                            aria-label={`${selected ? "Remove" : "Add"} ${product.name} from handbook`}
+                            aria-label={tr(
+                              language,
+                              `${selected ? "Remove" : "Add"} ${productName(row.productId, language)} from handbook`,
+                              `${selected ? "从手册移除" : "添加到手册"} ${productName(row.productId, language)}`
+                            )}
                           >
                             {selected && <Check size={13} />}
                           </button>
                           <img src={product.image} alt={`${product.name}, ${row.style}`} />
                           <div>
                             <span>{product.alias}</span>
-                            <h3>{product.name}</h3>
+                            <h3>{productName(row.productId, language)}</h3>
                             <label className="inline-edit">
-                              Style
+                              {tr(language, "Style", "风格")}
                               <input
                                 value={row.style}
                                 onChange={(event) => updateProduction(row.id, { style: event.target.value })}
                               />
                             </label>
                             <label className="inline-edit size">
-                              Size
+                              {tr(language, "Size", "尺寸")}
                               <input
                                 type="number"
                                 min="0"
@@ -1960,22 +3035,35 @@ export default function Home() {
                 </section>
                 <aside className="export-panel pixel-panel">
                   <span className="panel-icon"><BookOpen size={18} /></span>
-                  <h2>Dessert handbook</h2>
-                  <p>{selectedHandbookRows.length} style cards selected.</p>
+                  <h2>{tr(language, "Dessert handbook", "甜点手册")}</h2>
+                  <p>
+                    {tr(
+                      language,
+                      `${selectedHandbookRows.length} style cards selected.`,
+                      `已选择 ${selectedHandbookRows.length} 张风格卡片。`
+                    )}
+                  </p>
                   <div className="mini-menu-preview">
                     <Sprout size={22} />
-                    <small>CRUMBLOOM ATELIER</small>
-                    <strong>Today&apos;s<br />Dessert Garden</strong>
-                    <span>{selectedHandbookRows.map((row) => products[row.productId].alias).join(" · ") || "Choose cards"}</span>
+                    <small>DESSERT VALLEY</small>
+                    <strong>
+                      {tr(language, "Today’s", "今日")}
+                      <br />
+                      {tr(language, "Dessert Garden", "甜点花园")}
+                    </strong>
+                    <span>
+                      {selectedHandbookRows.map((row) => products[row.productId].alias).join(" · ") ||
+                        tr(language, "Choose cards", "选择卡片")}
+                    </span>
                   </div>
                   <button className="button secondary full" type="button" onClick={exportHandbookPNG}>
-                    <FileImage size={15} /> Export image
+                    <FileImage size={15} /> {tr(language, "Export image", "导出图片")}
                   </button>
                   <button className="button secondary full" type="button" onClick={exportHandbookHTML}>
-                    <FileCode2 size={15} /> Export HTML
+                    <FileCode2 size={15} /> {tr(language, "Export HTML", "导出 HTML")}
                   </button>
                   <button className="button primary full" type="button" onClick={() => window.print()}>
-                    <FileText size={15} /> Export PDF
+                    <FileText size={15} /> {tr(language, "Export PDF", "导出 PDF")}
                   </button>
                 </aside>
               </div>
@@ -1987,11 +3075,17 @@ export default function Home() {
       <footer className="atelier-footer">
         <span className="footer-mark"><Sprout size={18} /></span>
         <div>
-          <strong>Crumbloom Riverside Atelier</strong>
-          <small>From first spark to a beautifully planned bake.</small>
+          <strong>{tr(language, "Dessert Valley Riverside Atelier", "甜点谷河畔工坊")}</strong>
+          <small>
+            {tr(
+              language,
+              "From first spark to a beautifully planned bake.",
+              "从最初灵感，到从容完成每一次烘焙。"
+            )}
+          </small>
         </div>
         <button className="button ghost" type="button" onClick={() => openStage("idea")}>
-          Return to Idea garden
+          {tr(language, "Return to Idea garden", "返回创意花园")}
         </button>
       </footer>
 
@@ -2001,17 +3095,27 @@ export default function Home() {
             className={cn("agent-fab", agentOpen && "open")}
             type="button"
             onClick={() => setAgentOpen((current) => !current)}
-            aria-label="Open pastry agent"
+            aria-label={tr(language, "Open pastry agent", "打开甜点助手")}
           >
             {agentOpen ? <X size={20} /> : <Bot size={21} />}
-            {!agentOpen && <span>Ask Muse</span>}
+            {!agentOpen && <span>{tr(language, "Ask Muse", "问问缪斯")}</span>}
           </button>
           {agentOpen && (
             <aside className="agent-window">
               <header>
                 <span className="panel-icon muse"><Bot size={17} /></span>
-                <span><strong>Pastry agent</strong><small>floating helper</small></span>
-                <button className="square-button mini" type="button" onClick={() => setAgentOpen(false)} aria-label="Close chat"><X size={13} /></button>
+                <span>
+                  <strong>{tr(language, "Pastry agent", "甜点助手")}</strong>
+                  <small>{tr(language, "floating helper", "浮动助手")}</small>
+                </span>
+                <button
+                  className="square-button mini"
+                  type="button"
+                  onClick={() => setAgentOpen(false)}
+                  aria-label={tr(language, "Close chat", "关闭对话")}
+                >
+                  <X size={13} />
+                </button>
               </header>
               <div className="agent-messages">
                 {agentMessages.map((message, index) => (
@@ -2020,7 +3124,10 @@ export default function Home() {
               </div>
               {agentAudioName && <div className="audio-attached"><AudioLines size={13} /> {agentAudioName}</div>}
               <div className="agent-composer">
-                <label className="square-button" data-tip="Attach audio">
+                <label
+                  className="square-button"
+                  data-tip={tr(language, "Attach audio", "添加语音")}
+                >
                   <Mic size={15} />
                   <input
                     type="file"
@@ -2035,9 +3142,14 @@ export default function Home() {
                   value={agentInput}
                   onChange={(event) => setAgentInput(event.target.value)}
                   onKeyDown={(event) => event.key === "Enter" && sendAgentMessage()}
-                  placeholder="Ask about this product…"
+                  placeholder={tr(language, "Ask about this product…", "询问这个产品…")}
                 />
-                <button className="square-button send" type="button" onClick={sendAgentMessage} aria-label="Send">
+                <button
+                  className="square-button send"
+                  type="button"
+                  onClick={sendAgentMessage}
+                  aria-label={tr(language, "Send", "发送")}
+                >
                   <Send size={15} />
                 </button>
               </div>
@@ -2051,6 +3163,7 @@ export default function Home() {
           key={`${referenceEditor.kind}-${referenceEditor.existing?.id ?? "new"}`}
           kind={referenceEditor.kind}
           existing={referenceEditor.existing}
+          language={language}
           onClose={() => setReferenceEditor(null)}
           onSave={saveReference}
         />
@@ -2059,6 +3172,7 @@ export default function Home() {
         <StepEditor
           key={stepEditor === "new" ? "new" : stepEditor.id}
           existing={stepEditor === "new" ? null : stepEditor}
+          language={language}
           onClose={() => setStepEditor(null)}
           onSave={saveStep}
         />
