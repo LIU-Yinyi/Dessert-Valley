@@ -122,7 +122,17 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /requestRemoveIdea\(idea\)/);
   assert.match(page, /className="production-column-headings"/);
   assert.match(page, /className="production-field spec-field"/);
-  assert.match(page, /productionVariantsByProduct/);
+  assert.match(page, /productionVariantsByIdea/);
+  assert.match(page, /type ProductionRow = \{\s*id: number;\s*ideaId: number;/s);
+  assert.match(page, /addProductionBatchForIdea\(selectedIdea\.id, true\)/);
+  assert.match(page, /"Save & add production batch"/);
+  assert.match(page, /const consolidated = new Map/);
+  assert.match(page, /draft\.materials\.forEach/);
+  assert.match(page, /materialAmount\(material\.amount\) \* batchScale/);
+  assert.match(page, /materialPrices\[row\.key\]/);
+  assert.match(page, /productionIdeas\.map/);
+  assert.match(page, /migrateWorkspaceData/);
+  assert.doesNotMatch(page, /const productionMaterials|seedPrices/);
   assert.match(page, /tr\(language,\s*"Default",\s*"默认"\)/s);
   assert.doesNotMatch(
     page,
@@ -185,6 +195,9 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /\.variant-grid/);
   assert.match(css, /\.pixel-select-menu/);
   assert.match(css, /\.production-default-spec/);
+  assert.match(css, /\.production-empty/);
+  assert.match(css, /\.production-source/);
+  assert.match(css, /\.cost-empty/);
   assert.match(css, /\.language-button/);
   assert.doesNotMatch(css, /\.avatar/);
   assert.match(css, /\.alias-tip:hover::after/);
@@ -226,6 +239,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(workspaceStorage, /window\.indexedDB/);
   assert.match(workspaceStorage, /document\.cookie/);
   assert.match(workspaceStorage, /dessert-valley-workspace/);
+  assert.match(workspaceStorage, /WORKSPACE_STORAGE_VERSION = 2/);
   assert.match(workspaceStorage, /Max-Age=31536000/);
   assert.match(workspaceStorage, /SameSite=Lax/);
   assert.match(workspaceStorage, /localStorage\.setItem\(FALLBACK_STORAGE_KEY/);
