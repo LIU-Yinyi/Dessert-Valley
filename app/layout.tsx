@@ -27,26 +27,26 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     metadataBase: base,
-    title: "Crumbloom — Dessert Atelier",
+    title: "Crumbloom — Cozy Dessert Atelier",
     description:
-      "Dream, design and build beautiful desserts at home with an AI pastry partner.",
+      "Collect ideas, shape references, build recipes and plan bake day in a cozy pixel-farm dessert atelier.",
     openGraph: {
-      title: "Crumbloom — Dessert Atelier",
-      description: "Dream it. Design it. Dessert it.",
+      title: "Crumbloom — Cozy Dessert Atelier",
+      description: "A cozy dessert atelier for ideas, recipes and bake-day planning.",
       type: "website",
       images: [
         {
           url: socialImage,
-          width: 1731,
-          height: 909,
-          alt: "Crumbloom dessert atelier with a moonlit jasmine cake",
+          width: 1536,
+          height: 1024,
+          alt: "Crumbloom pixel-farm dessert atelier with three petite desserts",
         },
       ],
     },
     twitter: {
       card: "summary_large_image",
-      title: "Crumbloom — Dessert Atelier",
-      description: "Dream it. Design it. Dessert it.",
+      title: "Crumbloom — Cozy Dessert Atelier",
+      description: "A cozy dessert atelier for ideas, recipes and bake-day planning.",
       images: [socialImage],
     },
   };
