@@ -45,6 +45,13 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  ensureWorkspaceCookie,
+  hasWorkspaceCookie,
+  readWorkspace,
+  WORKSPACE_STORAGE_VERSION,
+  writeWorkspace,
+} from "./workspace-storage";
 
 type Stage = "idea" | "design" | "product" | "bake";
 type ReferenceKind = "text" | "audio" | "image" | "canvas";
@@ -122,6 +129,27 @@ type ProductDraft = {
   variants: SizeVariant[];
   materials: MaterialRow[];
   planSteps: PlanStep[];
+};
+
+type WorkspaceData = {
+  stage: Stage;
+  ideas: IdeaCard[];
+  selectedIdeaId: number;
+  ideaText: string;
+  ideaImage: string;
+  ideaImageName: string;
+  referencePackages: Record<number, DesignReference[]>;
+  viewStyle: ViewStyle;
+  renderResults: Record<number, RenderResult | null>;
+  productDrafts: Record<number, ProductDraft>;
+  bakeMode: "chef" | "diner";
+  productionRows: ProductionRow[];
+  prices: number[];
+  selectedHandbookIdeaIds: number[];
+  handbookStylePrompt: string;
+  handbookReferenceImage: string;
+  handbookReferenceName: string;
+  handbookResult: HandbookResult | null;
 };
 
 type PixelSelectOption<Value extends string | number> = {
@@ -422,6 +450,101 @@ async function normalizeReferenceImage(source: string) {
 
 function emptyProductDraft(): ProductDraft {
   return { variants: [], materials: [], planSteps: [] };
+}
+
+const seedProductionRows: ProductionRow[] = [
+  { id: 1, productId: "moon", variantId: null, count: 4 },
+  { id: 2, productId: "berry", variantId: null, count: 6 },
+  { id: 3, productId: "garden", variantId: null, count: 4 },
+];
+
+const seedPrices = [11.8, 28.5, 18.2, 31.4, 2.4];
+
+function createSeedWorkspaceData(): WorkspaceData {
+  const ideas = seedIdeas.map((idea) => ({
+    ...idea,
+    tags: [...idea.tags],
+  }));
+  return {
+    stage: "idea",
+    ideas,
+    selectedIdeaId: ideas[0]?.id ?? 1,
+    ideaText: "",
+    ideaImage: "",
+    ideaImageName: "",
+    referencePackages: Object.fromEntries(
+      ideas.map((idea) => [idea.id, inheritedReferences(idea)])
+    ),
+    viewStyle: "exterior",
+    renderResults: {},
+    productDrafts: Object.fromEntries(
+      ideas.map((idea) => [idea.id, emptyProductDraft()])
+    ),
+    bakeMode: "chef",
+    productionRows: seedProductionRows.map((row) => ({ ...row })),
+    prices: [...seedPrices],
+    selectedHandbookIdeaIds: ideas.map((idea) => idea.id),
+    handbookStylePrompt: "",
+    handbookReferenceImage: "",
+    handbookReferenceName: "",
+    handbookResult: null,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isWorkspaceData(value: unknown): value is WorkspaceData {
+  if (!isRecord(value)) return false;
+  const validStage =
+    value.stage === "idea" ||
+    value.stage === "design" ||
+    value.stage === "product" ||
+    value.stage === "bake";
+  const validView =
+    value.viewStyle === "exterior" || value.viewStyle === "cutaway";
+  const validBakeMode =
+    value.bakeMode === "chef" || value.bakeMode === "diner";
+  const validIdeas =
+    Array.isArray(value.ideas) &&
+    value.ideas.length > 0 &&
+    value.ideas.every(
+      (idea) =>
+        isRecord(idea) &&
+        typeof idea.id === "number" &&
+        typeof idea.title === "string" &&
+        typeof idea.prompt === "string" &&
+        typeof idea.image === "string" &&
+        typeof idea.imageName === "string" &&
+        Array.isArray(idea.tags) &&
+        idea.tags.every((tag) => typeof tag === "string")
+    );
+  const validHandbookResult =
+    value.handbookResult === null || isRecord(value.handbookResult);
+
+  return (
+    validStage &&
+    validView &&
+    validBakeMode &&
+    validIdeas &&
+    typeof value.selectedIdeaId === "number" &&
+    typeof value.ideaText === "string" &&
+    typeof value.ideaImage === "string" &&
+    typeof value.ideaImageName === "string" &&
+    isRecord(value.referencePackages) &&
+    isRecord(value.renderResults) &&
+    isRecord(value.productDrafts) &&
+    Array.isArray(value.productionRows) &&
+    Array.isArray(value.prices) &&
+    value.prices.every((price) => typeof price === "number") &&
+    Array.isArray(value.selectedHandbookIdeaIds) &&
+    value.selectedHandbookIdeaIds.every((id) => typeof id === "number") &&
+    typeof value.handbookStylePrompt === "string" &&
+    typeof value.handbookReferenceImage === "string" &&
+    typeof value.handbookReferenceName === "string" &&
+    validHandbookResult
+  );
 }
 
 function sizeVariantScale(variant: SizeVariant, baseVariant: SizeVariant) {
@@ -1584,6 +1707,7 @@ function IdeaDeleteDialog({
 
 export default function Home() {
   const [language, setLanguage] = useState<Language>("en");
+  const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
   const [stage, setStage] = useState<Stage>("idea");
   const [ideas, setIdeas] = useState<IdeaCard[]>(seedIdeas);
   const [selectedIdeaId, setSelectedIdeaId] = useState(1);
@@ -1623,12 +1747,10 @@ export default function Home() {
   const [agentMessages, setAgentMessages] = useState([agentGreeting("en")]);
   const [agentAudioName, setAgentAudioName] = useState("");
   const [bakeMode, setBakeMode] = useState<"chef" | "diner">("chef");
-  const [productionRows, setProductionRows] = useState<ProductionRow[]>([
-    { id: 1, productId: "moon", variantId: null, count: 4 },
-    { id: 2, productId: "berry", variantId: null, count: 6 },
-    { id: 3, productId: "garden", variantId: null, count: 4 },
-  ]);
-  const [prices, setPrices] = useState([11.8, 28.5, 18.2, 31.4, 2.4]);
+  const [productionRows, setProductionRows] = useState<ProductionRow[]>(() =>
+    seedProductionRows.map((row) => ({ ...row }))
+  );
+  const [prices, setPrices] = useState([...seedPrices]);
   const [selectedHandbookIdeaIds, setSelectedHandbookIdeaIds] = useState<number[]>([1, 2, 3]);
   const [handbookStylePrompt, setHandbookStylePrompt] = useState("");
   const [handbookReferenceImage, setHandbookReferenceImage] = useState("");
@@ -1640,6 +1762,7 @@ export default function Home() {
   const importRef = useRef<HTMLInputElement | null>(null);
   const ideaSelectorRef = useRef<HTMLDivElement | null>(null);
   const handbookReferenceRef = useRef<HTMLInputElement | null>(null);
+  const workspaceSaveWarningShown = useRef(false);
 
   const selectedIdea =
     ideas.find((idea) => idea.id === selectedIdeaId) ?? ideas[0] ?? seedIdeas[0];
@@ -1776,6 +1899,135 @@ export default function Home() {
     document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
     window.localStorage.setItem("dessert-valley-language", language);
   }, [language]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateWorkspace = async () => {
+      if (!hasWorkspaceCookie()) ensureWorkspaceCookie();
+
+      try {
+        const stored = await readWorkspace<unknown>();
+        const workspace =
+          stored?.version === WORKSPACE_STORAGE_VERSION &&
+          isWorkspaceData(stored.data)
+            ? stored.data
+            : createSeedWorkspaceData();
+
+        if (
+          stored?.version !== WORKSPACE_STORAGE_VERSION ||
+          !isWorkspaceData(stored?.data)
+        ) {
+          await writeWorkspace(workspace);
+        }
+        if (cancelled) return;
+
+        const activeIdeaId = workspace.ideas.some(
+          (idea) => idea.id === workspace.selectedIdeaId
+        )
+          ? workspace.selectedIdeaId
+          : workspace.ideas[0].id;
+        const restoredProductionRows = normalizeProductionRows(
+          workspace.productionRows
+        );
+
+        setStage(workspace.stage);
+        setIdeas(workspace.ideas);
+        setSelectedIdeaId(activeIdeaId);
+        setIdeaText(workspace.ideaText);
+        setIdeaImage(workspace.ideaImage);
+        setIdeaImageName(workspace.ideaImageName);
+        setReferencePackages(workspace.referencePackages);
+        setViewStyle(workspace.viewStyle);
+        setRenderResults(workspace.renderResults);
+        setProductDrafts(workspace.productDrafts);
+        setBakeMode(workspace.bakeMode);
+        if (restoredProductionRows) {
+          setProductionRows(restoredProductionRows);
+        }
+        setPrices(workspace.prices);
+        setSelectedHandbookIdeaIds(workspace.selectedHandbookIdeaIds);
+        setHandbookStylePrompt(workspace.handbookStylePrompt);
+        setHandbookReferenceImage(workspace.handbookReferenceImage);
+        setHandbookReferenceName(workspace.handbookReferenceName);
+        setHandbookResult(workspace.handbookResult);
+        setWorkspaceHydrated(true);
+      } catch {
+        if (cancelled) return;
+        ensureWorkspaceCookie();
+        setWorkspaceHydrated(true);
+        setToast(
+          "Local autosave is unavailable in this browser. / 本地自动保存不可用。"
+        );
+      }
+    };
+
+    void hydrateWorkspace();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!workspaceHydrated) return;
+
+    const snapshot: WorkspaceData = {
+      stage,
+      ideas,
+      selectedIdeaId,
+      ideaText,
+      ideaImage,
+      ideaImageName,
+      referencePackages,
+      viewStyle,
+      renderResults,
+      productDrafts,
+      bakeMode,
+      productionRows,
+      prices,
+      selectedHandbookIdeaIds,
+      handbookStylePrompt,
+      handbookReferenceImage,
+      handbookReferenceName,
+      handbookResult,
+    };
+    const persistSnapshot = () => {
+      void writeWorkspace(snapshot).catch(() => {
+        if (workspaceSaveWarningShown.current) return;
+        workspaceSaveWarningShown.current = true;
+        setToast(
+          "This workspace could not be saved locally. / 无法在本地保存此工作区。"
+        );
+      });
+    };
+    const timer = window.setTimeout(persistSnapshot, 150);
+    window.addEventListener("pagehide", persistSnapshot);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pagehide", persistSnapshot);
+    };
+  }, [
+    bakeMode,
+    handbookReferenceImage,
+    handbookReferenceName,
+    handbookResult,
+    handbookStylePrompt,
+    ideaImage,
+    ideaImageName,
+    ideas,
+    ideaText,
+    prices,
+    productionRows,
+    productDrafts,
+    referencePackages,
+    renderResults,
+    selectedHandbookIdeaIds,
+    selectedIdeaId,
+    stage,
+    viewStyle,
+    workspaceHydrated,
+  ]);
 
   const toggleLanguage = () => {
     const nextLanguage: Language = language === "en" ? "zh" : "en";

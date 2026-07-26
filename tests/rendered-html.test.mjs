@@ -39,7 +39,16 @@ test("server renders the Dessert Valley product shell", async () => {
 });
 
 test("keeps the simplified multimodal workflow and responsive contracts", async () => {
-  const [page, css, layout, packageJson, renderRoute, planAdviceRoute, handbookRoute] = await Promise.all([
+  const [
+    page,
+    css,
+    layout,
+    packageJson,
+    renderRoute,
+    planAdviceRoute,
+    handbookRoute,
+    workspaceStorage,
+  ] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
@@ -47,6 +56,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
     readFile(new URL("../app/api/render/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/plan-advice/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/handbook-render/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/workspace-storage.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /type ReferenceKind = "text" \| "audio" \| "image" \| "canvas"/);
@@ -58,6 +68,14 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /designIntentSignature/);
   assert.match(page, /referencePackages/);
   assert.match(page, /renderResults/);
+  assert.match(page, /type WorkspaceData/);
+  assert.match(page, /readWorkspace<unknown>/);
+  assert.match(page, /createSeedWorkspaceData/);
+  assert.match(page, /writeWorkspace\(snapshot\)/);
+  assert.match(page, /setReferencePackages\(workspace\.referencePackages\)/);
+  assert.match(page, /setRenderResults\(workspace\.renderResults\)/);
+  assert.match(page, /setProductDrafts\(workspace\.productDrafts\)/);
+  assert.match(page, /addEventListener\("pagehide", persistSnapshot\)/);
   assert.match(page, /const saveActiveRendering = \(continueToProduct: boolean\)/);
   assert.match(page, /image: renderResult\.src/);
   assert.match(
@@ -202,4 +220,11 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(handbookRoute, /Do not render any words, letters, numbers/);
   assert.match(handbookRoute, /1024x1536/);
   assert.doesNotMatch(handbookRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
+
+  assert.match(workspaceStorage, /window\.indexedDB/);
+  assert.match(workspaceStorage, /document\.cookie/);
+  assert.match(workspaceStorage, /dessert-valley-workspace/);
+  assert.match(workspaceStorage, /Max-Age=31536000/);
+  assert.match(workspaceStorage, /SameSite=Lax/);
+  assert.match(workspaceStorage, /localStorage\.setItem\(FALLBACK_STORAGE_KEY/);
 });
