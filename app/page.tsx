@@ -385,9 +385,27 @@ function intentSignature(references: DesignReference[]) {
   );
 }
 
+function designIntentSignature(
+  idea: IdeaCard,
+  references: DesignReference[]
+) {
+  return hashText(
+    [
+      idea.title,
+      idea.tags.join("|"),
+      intentSignature(references),
+    ].join("::")
+  );
+}
+
 function intentProductId(idea: IdeaCard, references: DesignReference[]): ProductId {
-  const intent = references
-    .map((reference) => `${reference.title} ${reference.content}`)
+  const intent = [
+    idea.title,
+    idea.tags.join(" "),
+    ...references.map(
+      (reference) => `${reference.title} ${reference.content}`
+    ),
+  ]
     .join(" ")
     .toLowerCase();
   if (/strawberry|raspberry|berry|pink|red|草莓|莓|粉色|红色/.test(intent)) return "berry";
@@ -398,9 +416,14 @@ function intentProductId(idea: IdeaCard, references: DesignReference[]): Product
   return ideaVariant(idea);
 }
 
-function intentColor(references: DesignReference[]) {
-  const intent = references
-    .map((reference) => `${reference.title} ${reference.content}`)
+function intentColor(idea: IdeaCard, references: DesignReference[]) {
+  const intent = [
+    idea.title,
+    idea.tags.join(" "),
+    ...references.map(
+      (reference) => `${reference.title} ${reference.content}`
+    ),
+  ]
     .join(" ")
     .toLowerCase();
   const matches: Array<[RegExp, string]> = [
@@ -467,7 +490,7 @@ async function composeIntentRendering({
     }
   }
 
-  const color = intentColor(references);
+  const color = intentColor(idea, references);
   context.save();
   context.globalAlpha = visualReferences.length ? 0.16 : 0.12;
   context.globalCompositeOperation = "color";
@@ -475,8 +498,13 @@ async function composeIntentRendering({
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.restore();
 
-  const intentText = references
-    .map((reference) => `${reference.title} ${reference.content}`)
+  const intentText = [
+    idea.title,
+    idea.tags.join(" "),
+    ...references.map(
+      (reference) => `${reference.title} ${reference.content}`
+    ),
+  ]
     .join(" ")
     .toLowerCase();
   context.save();
@@ -1216,6 +1244,212 @@ function StepEditor({
   );
 }
 
+function parseIdeaTags(value: string) {
+  return Array.from(
+    new Set(
+      value
+        .split(/[,，\n#]+/)
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    )
+  ).slice(0, 12);
+}
+
+function IdeaEditor({
+  idea,
+  language,
+  onClose,
+  onSave,
+}: {
+  idea: IdeaCard;
+  language: Language;
+  onClose: () => void;
+  onSave: (idea: IdeaCard) => void;
+}) {
+  const [title, setTitle] = useState(idea.title);
+  const [description, setDescription] = useState(idea.prompt);
+  const [tagText, setTagText] = useState(idea.tags.join(", "));
+  const dialogRef = useDialogFocus(onClose);
+  const previewTags = parseIdeaTags(tagText);
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section
+        ref={dialogRef}
+        className="pixel-modal idea-editor-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="idea-editor-title"
+      >
+        <header className="modal-header">
+          <div className="modal-icon"><Pencil size={18} /></div>
+          <div>
+            <span className="micro-label">
+              {tr(language, "Idea gallery", "创意画廊")}
+            </span>
+            <h2 id="idea-editor-title">
+              {tr(language, "Edit idea card", "编辑创意卡")}
+            </h2>
+          </div>
+          <button
+            className="square-button"
+            type="button"
+            onClick={onClose}
+            aria-label={tr(language, "Close", "关闭")}
+          >
+            <X size={16} />
+          </button>
+        </header>
+
+        <div className="modal-body">
+          <label className="field">
+            <span>{tr(language, "Dessert name", "甜点名称")}</span>
+            <input
+              value={title}
+              maxLength={80}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder={tr(
+                language,
+                "Name this dessert idea",
+                "为这个甜点创意命名"
+              )}
+              autoFocus
+            />
+          </label>
+          <label className="field">
+            <span>{tr(language, "Description", "创意描述")}</span>
+            <textarea
+              rows={6}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder={tr(
+                language,
+                "Describe the flavour, form, mood and details to preserve.",
+                "描述想保留的风味、造型、氛围与细节。"
+              )}
+            />
+          </label>
+          <label className="field">
+            <span>{tr(language, "Tags", "标签")}</span>
+            <input
+              value={tagText}
+              onChange={(event) => setTagText(event.target.value)}
+              placeholder={tr(
+                language,
+                "jasmine, pear, pearl",
+                "茉莉，梨，珍珠"
+              )}
+            />
+            <small className="field-help">
+              {tr(
+                language,
+                "Separate tags with commas. Up to 12 tags are kept.",
+                "使用逗号分隔标签，最多保留 12 个。"
+              )}
+            </small>
+          </label>
+          {previewTags.length > 0 && (
+            <div
+              className="idea-tag-preview"
+              aria-label={tr(language, "Tag preview", "标签预览")}
+            >
+              {previewTags.map((tag) => (
+                <span key={tag}>#{tag}</span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <footer className="modal-footer">
+          <button className="button ghost" type="button" onClick={onClose}>
+            {tr(language, "Cancel", "取消")}
+          </button>
+          <button
+            className="button primary"
+            type="button"
+            disabled={!title.trim()}
+            onClick={() =>
+              onSave({
+                ...idea,
+                title: title.trim(),
+                prompt: description.trim(),
+                tags: previewTags,
+              })
+            }
+          >
+            <Check size={15} /> {tr(language, "Save changes", "保存修改")}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function IdeaDeleteDialog({
+  idea,
+  language,
+  onClose,
+  onConfirm,
+}: {
+  idea: IdeaCard;
+  language: Language;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const dialogRef = useDialogFocus(onClose);
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section
+        ref={dialogRef}
+        className="pixel-modal confirm-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-idea-title"
+        aria-describedby="delete-idea-description"
+      >
+        <header className="modal-header">
+          <div className="modal-icon danger"><Trash2 size={18} /></div>
+          <div>
+            <span className="micro-label">
+              {tr(language, "Idea gallery", "创意画廊")}
+            </span>
+            <h2 id="delete-idea-title">
+              {tr(language, "Remove idea card?", "移除创意卡？")}
+            </h2>
+          </div>
+          <button
+            className="square-button"
+            type="button"
+            onClick={onClose}
+            aria-label={tr(language, "Close", "关闭")}
+          >
+            <X size={16} />
+          </button>
+        </header>
+        <div className="modal-body delete-dialog-copy">
+          <strong>{idea.title}</strong>
+          <p id="delete-idea-description">
+            {tr(
+              language,
+              "Its intent package, renderings, size variants, materials and making steps will also be removed.",
+              "与它关联的意图包、渲染图、尺寸规格、材料和制作步骤也会一并移除。"
+            )}
+          </p>
+        </div>
+        <footer className="modal-footer">
+          <button className="button ghost" type="button" onClick={onClose}>
+            {tr(language, "Keep card", "保留卡片")}
+          </button>
+          <button className="button danger" type="button" onClick={onConfirm}>
+            <Trash2 size={15} /> {tr(language, "Remove idea", "移除创意")}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 export default function Home() {
   const [language, setLanguage] = useState<Language>("en");
   const [stage, setStage] = useState<Stage>("idea");
@@ -1224,6 +1458,8 @@ export default function Home() {
   const [ideaText, setIdeaText] = useState("");
   const [ideaImage, setIdeaImage] = useState("");
   const [ideaImageName, setIdeaImageName] = useState("");
+  const [ideaEditor, setIdeaEditor] = useState<IdeaCard | null>(null);
+  const [ideaToDelete, setIdeaToDelete] = useState<IdeaCard | null>(null);
   const [referencePackages, setReferencePackages] = useState<
     Record<number, DesignReference[]>
   >(() =>
@@ -1272,7 +1508,10 @@ export default function Home() {
   const variant = renderResult?.productId ?? ideaVariant(selectedIdea);
   const currentProduct = products[variant];
   const rendering = renderingDesignId === selectedIdea.id;
-  const currentIntentSignature = intentSignature(references);
+  const currentIntentSignature = designIntentSignature(
+    selectedIdea,
+    references
+  );
   const renderingIsStale =
     Boolean(renderResult) &&
     (renderResult?.signature !== currentIntentSignature ||
@@ -1452,6 +1691,77 @@ export default function Home() {
     notify(tr(language, "Idea added to the gallery", "创意已添加到画廊"));
   };
 
+  const saveIdea = (updatedIdea: IdeaCard) => {
+    setIdeas((current) =>
+      current.map((idea) =>
+        idea.id === updatedIdea.id ? updatedIdea : idea
+      )
+    );
+    setReferencePackages((current) => {
+      const existing = current[updatedIdea.id];
+      if (!existing) {
+        return {
+          ...current,
+          [updatedIdea.id]: inheritedReferences(updatedIdea),
+        };
+      }
+      return {
+        ...current,
+        [updatedIdea.id]: existing.map((reference) =>
+          reference.inherited && reference.kind === "text"
+            ? { ...reference, content: updatedIdea.prompt }
+            : reference
+        ),
+      };
+    });
+    setIdeaEditor(null);
+    notify(tr(language, "Idea card updated", "创意卡已更新"));
+  };
+
+  const requestRemoveIdea = (idea: IdeaCard) => {
+    if (ideas.length <= 1) {
+      notify(
+        tr(
+          language,
+          "Keep at least one idea in the gallery",
+          "创意画廊中至少需要保留一个创意"
+        )
+      );
+      return;
+    }
+    setIdeaToDelete(idea);
+  };
+
+  const removeIdea = () => {
+    if (!ideaToDelete) return;
+    const removedId = ideaToDelete.id;
+    const remainingIdeas = ideas.filter((idea) => idea.id !== removedId);
+    setIdeas(remainingIdeas);
+    setReferencePackages((current) => {
+      const next = { ...current };
+      delete next[removedId];
+      return next;
+    });
+    setRenderResults((current) => {
+      const next = { ...current };
+      delete next[removedId];
+      return next;
+    });
+    setProductDrafts((current) => {
+      const next = { ...current };
+      delete next[removedId];
+      return next;
+    });
+    if (selectedIdeaId === removedId) {
+      const nextIdea = remainingIdeas[0];
+      setSelectedIdeaId(nextIdea.id);
+      setViewStyle(renderResults[nextIdea.id]?.view ?? "exterior");
+    }
+    if (renderingDesignId === removedId) setRenderingDesignId(null);
+    setIdeaToDelete(null);
+    notify(tr(language, "Idea removed from the gallery", "创意已从画廊移除"));
+  };
+
   const saveReference = (reference: DesignReference) => {
     setActiveReferences((current) => {
       const exists = current.some((item) => item.id === reference.id);
@@ -1476,7 +1786,7 @@ export default function Home() {
     const idea = selectedIdea;
     const ideaId = idea.id;
     const packageSnapshot = [...references];
-    const signature = intentSignature(packageSnapshot);
+    const signature = designIntentSignature(idea, packageSnapshot);
     setRenderingDesignId(ideaId);
     try {
       await new Promise((resolve) => window.setTimeout(resolve, 650));
@@ -1942,12 +2252,44 @@ export default function Home() {
                     {idea.image ? (
                       <img
                         src={idea.image}
-                        alt={`${idea.title} concept rendering`}
+                        alt={tr(
+                          language,
+                          `${idea.title} concept rendering`,
+                          `${idea.title} 创意渲染图`
+                        )}
                         decoding="async"
                       />
                     ) : (
                       <span><CakeSlice size={28} /></span>
                     )}
+                    <div className="idea-card-actions">
+                      <button
+                        className="square-button mini"
+                        type="button"
+                        onClick={() => setIdeaEditor(idea)}
+                        aria-label={tr(
+                          language,
+                          `Edit ${idea.title}`,
+                          `编辑 ${idea.title}`
+                        )}
+                        title={tr(language, "Edit idea", "编辑创意")}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        className="square-button mini danger"
+                        type="button"
+                        onClick={() => requestRemoveIdea(idea)}
+                        aria-label={tr(
+                          language,
+                          `Remove ${idea.title}`,
+                          `移除 ${idea.title}`
+                        )}
+                        title={tr(language, "Remove idea", "移除创意")}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                     <span className="ready-flag">
                       <Check size={12} /> {tr(language, "ready", "就绪")}
                     </span>
@@ -3158,6 +3500,24 @@ export default function Home() {
         </>
       )}
 
+      {ideaEditor && (
+        <IdeaEditor
+          key={ideaEditor.id}
+          idea={ideaEditor}
+          language={language}
+          onClose={() => setIdeaEditor(null)}
+          onSave={saveIdea}
+        />
+      )}
+      {ideaToDelete && (
+        <IdeaDeleteDialog
+          key={ideaToDelete.id}
+          idea={ideaToDelete}
+          language={language}
+          onClose={() => setIdeaToDelete(null)}
+          onConfirm={removeIdea}
+        />
+      )}
       {referenceEditor && (
         <ReferenceEditor
           key={`${referenceEditor.kind}-${referenceEditor.existing?.id ?? "new"}`}

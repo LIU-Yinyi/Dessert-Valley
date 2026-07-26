@@ -50,6 +50,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /inheritedReferences\(idea\)/);
   assert.match(page, /composeIntentRendering/);
   assert.match(page, /intentSignature/);
+  assert.match(page, /designIntentSignature/);
   assert.match(page, /referencePackages/);
   assert.match(page, /renderResults/);
   assert.match(page, /productDrafts/);
@@ -61,6 +62,11 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /className="agent-window"/);
   assert.match(page, /className="alias-tip"/);
   assert.match(page, /className="active-design-switcher pixel-panel"/);
+  assert.match(page, /function IdeaEditor/);
+  assert.match(page, /function IdeaDeleteDialog/);
+  assert.match(page, /parseIdeaTags/);
+  assert.match(page, /setIdeaEditor\(idea\)/);
+  assert.match(page, /requestRemoveIdea\(idea\)/);
   assert.match(page, /className="production-column-headings"/);
   assert.match(page, /className="world-scenery"/);
   assert.match(page, /aria-current=\{item\.id === stage \? "step" : undefined\}/);
@@ -87,6 +93,9 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /\.cost-table-scroll/);
   assert.match(css, /\.production-column-headings/);
   assert.match(css, /\.active-design-list/);
+  assert.match(css, /\.idea-card-actions/);
+  assert.match(css, /\.idea-tag-preview/);
+  assert.match(css, /\.button\.danger/);
   assert.match(css, /\.variant-grid/);
   assert.match(css, /\.language-button/);
   assert.match(css, /\.alias-tip:hover::after/);

@@ -641,6 +641,16 @@ input[type="file"] {
   border-color: var(--leaf);
 }
 
+.button.danger {
+  color: var(--paper-hi);
+  background: var(--berry);
+  border-color: var(--soil-deep);
+}
+
+.button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--berry) 82%, var(--soil-deep));
+}
+
 .button.ghost {
   color: var(--ink-soft);
   background: var(--paper-hi);
@@ -766,6 +776,8 @@ input[type="file"] {
 .idea-tile {
   position: relative;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   transition: translate .12s steps(2, end), box-shadow .12s steps(2, end);
 }
@@ -802,6 +814,19 @@ input[type="file"] {
   color: var(--leaf);
 }
 
+.idea-card-actions {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+}
+
+.idea-card-actions .square-button {
+  background: color-mix(in srgb, var(--paper-hi) 92%, transparent);
+}
+
 .ready-flag {
   position: absolute;
   top: 10px;
@@ -821,6 +846,9 @@ input[type="file"] {
 }
 
 .idea-copy {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   padding: 20px;
 }
 
@@ -851,6 +879,10 @@ input[type="file"] {
   color: var(--leaf-deep);
   font-family: var(--font-display);
   font-size: 9px;
+}
+
+.idea-copy .text-button {
+  margin-top: auto;
 }
 
 .selected-idea {
@@ -1333,6 +1365,20 @@ input[type="file"] {
   width: min(100%, 960px);
 }
 
+.idea-editor-modal {
+  width: min(100%, 640px);
+}
+
+.confirm-modal {
+  width: min(100%, 520px);
+}
+
+.modal-icon.danger {
+  color: var(--paper-hi);
+  background: var(--berry);
+  border-color: var(--soil-deep);
+}
+
 @keyframes modal-arrive {
   from { opacity: 0; transform: translateY(8px) scale(.98); }
 }
@@ -1403,6 +1449,44 @@ input[type="file"] {
 .field textarea {
   resize: vertical;
   line-height: 1.55;
+}
+
+.field-help {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.idea-tag-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: -3px;
+  padding: 10px;
+  background: var(--cream);
+  border: 2px dashed var(--line);
+}
+
+.idea-tag-preview span {
+  padding: 4px 6px;
+  color: var(--leaf-deep);
+  background: var(--leaf-soft);
+  border: 1px solid var(--leaf);
+  font-family: var(--font-display);
+  font-size: 9px;
+}
+
+.delete-dialog-copy strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 17px;
+}
+
+.delete-dialog-copy p {
+  margin: 9px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.65;
 }
 
 .field input,
