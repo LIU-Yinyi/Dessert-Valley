@@ -30,9 +30,11 @@ test("server renders the Crumbloom product shell", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Crumbloom — Cozy Dessert Atelier<\/title>/i);
-  assert.match(html, /Plant a dessert idea\./);
+  assert.match(html, /Dream a dessert worth making\./);
   assert.match(html, /Idea gallery/);
   assert.match(html, /Moonlit Jasmine Cloud/);
+  assert.match(html, /Skip to atelier workspace/);
+  assert.match(html, /Crumbloom Riverside Atelier/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -51,6 +53,9 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /Include 6% handling loss/);
   assert.match(page, /className="agent-window"/);
   assert.match(page, /className="alias-tip"/);
+  assert.match(page, /className="world-scenery"/);
+  assert.match(page, /aria-current=\{item\.id === stage \? "step" : undefined\}/);
+  assert.match(page, /function useDialogFocus/);
   assert.ok(
     page.indexOf("<strong>For chefs</strong>") <
       page.indexOf("<strong>For diners</strong>"),
@@ -58,7 +63,14 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.doesNotMatch(page, /theme-select|Idea inbox|Estimated number/i);
 
   assert.match(css, /@media \(max-width: 1120px\)/);
+  assert.match(css, /@media \(max-width: 940px\)/);
   assert.match(css, /@media \(max-width: 620px\)/);
+  assert.match(
+    css,
+    /grid-template-columns: minmax\(160px, 1fr\) minmax\(500px, 640px\) minmax\(160px, 1fr\)/,
+  );
+  assert.match(css, /--soil-deep: #4a2f24/i);
+  assert.match(css, /\.atelier-footer/);
   assert.match(css, /\.pixel-tool-cursor/);
   assert.match(css, /\.cost-table-scroll/);
   assert.match(css, /\.alias-tip:hover::after/);

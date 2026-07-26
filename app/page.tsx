@@ -222,6 +222,61 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function useDialogFocus(onClose: () => void) {
+  const dialogRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    const focusableSelector =
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), audio[controls], [tabindex]:not([tabindex="-1"])';
+    const focusFirst = window.requestAnimationFrame(() => {
+      dialog.querySelector<HTMLElement>(focusableSelector)?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(focusableSelector)
+      ).filter((element) => element.offsetParent !== null);
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFirst);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      previousFocus?.focus();
+    };
+  }, [onClose]);
+
+  return dialogRef;
+}
+
 function CanvasPad({
   initialAsset,
   onChange,
@@ -485,6 +540,7 @@ function ReferenceEditor({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const dialogRef = useDialogFocus(onClose);
 
   useEffect(
     () => () => {
@@ -545,12 +601,18 @@ function ReferenceEditor({
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className={cn("pixel-modal", kind === "canvas" && "canvas-modal")} role="dialog" aria-modal="true">
+      <section
+        ref={dialogRef}
+        className={cn("pixel-modal", kind === "canvas" && "canvas-modal")}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reference-dialog-title"
+      >
         <header className="modal-header">
           <div className="modal-icon"><meta.icon size={18} /></div>
           <div>
             <span className="micro-label">{existing ? "Edit reference" : "Add reference"}</span>
-            <h2>{meta.label}</h2>
+            <h2 id="reference-dialog-title">{meta.label}</h2>
           </div>
           <button className="square-button" type="button" onClick={onClose} aria-label="Close">
             <X size={16} />
@@ -662,6 +724,7 @@ function StepEditor({
   const [title, setTitle] = useState(existing?.title ?? "");
   const [instruction, setInstruction] = useState(existing?.instruction ?? "");
   const [image, setImage] = useState(existing?.image ?? "");
+  const dialogRef = useDialogFocus(onClose);
 
   const handleImage = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -671,13 +734,19 @@ function StepEditor({
   };
 
   return (
-    <div className="modal-backdrop">
-      <section className="pixel-modal step-modal" role="dialog" aria-modal="true">
+    <div className="modal-backdrop" role="presentation">
+      <section
+        ref={dialogRef}
+        className="pixel-modal step-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="step-dialog-title"
+      >
         <header className="modal-header">
           <div className="modal-icon"><Layers3 size={18} /></div>
           <div>
             <span className="micro-label">{existing ? "Edit step" : "Add step"}</span>
-            <h2>Making instruction</h2>
+            <h2 id="step-dialog-title">Making instruction</h2>
           </div>
           <button className="square-button" type="button" onClick={onClose} aria-label="Close">
             <X size={16} />
@@ -1059,7 +1128,19 @@ export default function Home() {
   };
 
   return (
-    <div className="pixel-app">
+    <>
+      <a className="skip-link" href="#atelier-workspace">Skip to atelier workspace</a>
+      <div className="pixel-app">
+      <div className="world-scenery" aria-hidden="true">
+        <span className="pixel-sun" />
+        <span className="pixel-cloud cloud-one" />
+        <span className="pixel-cloud cloud-two" />
+        <span className="distant-hill hill-one" />
+        <span className="distant-hill hill-two" />
+        <span className="orchard-tree tree-left" />
+        <span className="orchard-tree tree-right" />
+        <span className="fence-line" />
+      </div>
       <header className="topbar">
         <button
           className="brand"
@@ -1070,7 +1151,7 @@ export default function Home() {
           <span className="brand-mark"><Sprout size={18} /></span>
           <span>
             <strong>Crumbloom</strong>
-            <small>dessert atelier</small>
+            <small>riverside pastry studio</small>
           </span>
         </button>
         <nav className="stage-nav" aria-label="Dessert workflow">
@@ -1082,6 +1163,7 @@ export default function Home() {
                 type="button"
                 className={cn(item.id === stage && "active", index < stageIndex && "complete")}
                 onClick={() => openStage(item.id)}
+                aria-current={item.id === stage ? "step" : undefined}
               >
                 <span><Icon size={15} /></span>
                 <strong>{item.label}</strong>
@@ -1102,13 +1184,13 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="workspace">
+      <main className="workspace" id="atelier-workspace" tabIndex={-1}>
         {stage === "idea" && (
           <section className="stage-section idea-stage">
             <div className="stage-intro">
               <span className="stage-kicker"><Sprout size={14} /> Idea garden</span>
-              <h1>Plant a dessert idea.</h1>
-              <p>Keep it loose. One sentence and an image are enough to begin.</p>
+              <h1>Dream a dessert worth making.</h1>
+              <p>Gather a spark, shape it visually, build the recipe, then carry it into bake day.</p>
             </div>
 
             <div className="idea-composer pixel-panel">
@@ -1156,7 +1238,11 @@ export default function Home() {
                 <article className="idea-tile pixel-panel" key={idea.id}>
                   <div className="idea-thumb">
                     {idea.image ? (
-                      <img src={idea.image} alt="" />
+                      <img
+                        src={idea.image}
+                        alt={`${idea.title} concept rendering`}
+                        decoding="async"
+                      />
                     ) : (
                       <span><CakeSlice size={28} /></span>
                     )}
@@ -1183,8 +1269,8 @@ export default function Home() {
             <div className="stage-intro split">
               <div>
                 <span className="stage-kicker"><Pencil size={14} /> Design dock</span>
-                <h1>Collect only what matters.</h1>
-                <p>Each small reference card becomes part of one shared rendering intent.</p>
+                <h1>Shape the feeling into form.</h1>
+                <p>Collect only the references that matter. Together, they become one clear rendering intent.</p>
               </div>
               <button className="selected-idea" type="button" onClick={() => openStage("idea")}>
                 {selectedIdea.image ? <img src={selectedIdea.image} alt="" /> : <CakeSlice size={19} />}
@@ -1251,7 +1337,11 @@ export default function Home() {
                       <article className="reference-card" key={reference.id}>
                         <div className={cn("reference-preview", `kind-${reference.kind}`)}>
                           {reference.asset && (reference.kind === "image" || reference.kind === "canvas") ? (
-                            <img src={reference.asset} alt="" />
+                            <img
+                              src={reference.asset}
+                              alt={`${reference.title} reference`}
+                              decoding="async"
+                            />
                           ) : reference.kind === "audio" && reference.asset ? (
                             <Volume2 size={23} />
                           ) : (
@@ -1382,13 +1472,16 @@ export default function Home() {
           <section className="stage-section product-stage">
             <div className="stage-intro">
               <span className="stage-kicker"><CakeSlice size={14} /> Product bench</span>
-              <h1>Make one. Then scale.</h1>
-              <p>Nothing is fixed. Add only the size, materials and steps your dessert needs.</p>
+              <h1>Turn the sketch into a recipe.</h1>
+              <p>Define only what this dessert needs: its scale, materials, handling notes and making steps.</p>
             </div>
 
             <div className="product-overview pixel-panel">
               <div className="product-mini-render">
-                <img src={renderResult?.src || currentProduct.image} alt="" />
+                <img
+                  src={renderResult?.src || currentProduct.image}
+                  alt={`${selectedIdea.title} product rendering`}
+                />
               </div>
               <div>
                 <span className="micro-label">Active design</span>
@@ -1575,7 +1668,11 @@ export default function Home() {
                     <article className="step-card" key={step.id}>
                       <div className="step-number">{String(index + 1).padStart(2, "0")}</div>
                       <div className="step-visual">
-                        {step.image ? <img src={step.image} alt="" /> : <ImagePlus size={21} />}
+                        {step.image ? (
+                          <img src={step.image} alt={`${step.title} step visual`} decoding="async" />
+                        ) : (
+                          <ImagePlus size={21} />
+                        )}
                       </div>
                       <div className="step-copy">
                         <h3>{step.title}</h3>
@@ -1612,8 +1709,8 @@ export default function Home() {
           <section className="stage-section bake-stage">
             <div className="stage-intro">
               <span className="stage-kicker"><Wheat size={14} /> Bake day</span>
-              <h1>Scale the craft, keep the character.</h1>
-              <p>Plan production first, then turn selected styles into a table handbook.</p>
+              <h1>Plan the bake. Share the story.</h1>
+              <p>Scale production with confidence, then turn selected styles into a keepsake table handbook.</p>
             </div>
 
             <div className="bake-switch" role="tablist">
@@ -1656,7 +1753,7 @@ export default function Home() {
                       const product = products[row.productId];
                       return (
                         <article className="production-row" key={row.id}>
-                          <img src={product.image} alt="" />
+                          <img src={product.image} alt={`${product.name} product rendering`} />
                           <div className="production-name">
                             <select
                               value={row.productId}
@@ -1828,7 +1925,7 @@ export default function Home() {
                           >
                             {selected && <Check size={13} />}
                           </button>
-                          <img src={product.image} alt="" />
+                          <img src={product.image} alt={`${product.name}, ${row.style}`} />
                           <div>
                             <span>{product.alias}</span>
                             <h3>{product.name}</h3>
@@ -1886,6 +1983,17 @@ export default function Home() {
           </section>
         )}
       </main>
+
+      <footer className="atelier-footer">
+        <span className="footer-mark"><Sprout size={18} /></span>
+        <div>
+          <strong>Crumbloom Riverside Atelier</strong>
+          <small>From first spark to a beautifully planned bake.</small>
+        </div>
+        <button className="button ghost" type="button" onClick={() => openStage("idea")}>
+          Return to Idea garden
+        </button>
+      </footer>
 
       {stage === "product" && (
         <>
@@ -1957,6 +2065,7 @@ export default function Home() {
       )}
 
       {toast && <div className="toast"><Check size={15} /> {toast}</div>}
-    </div>
+      </div>
+    </>
   );
 }
