@@ -23,6 +23,7 @@ import {
   Import,
   Layers3,
   Lightbulb,
+  LoaderCircle,
   Menu,
   MessageCircleMore,
   Minus,
@@ -215,6 +216,21 @@ const productionMaterials = [
   { name: "Fresh fruit / purée", unit: "kg", perProduct: [0.16, 0.5, 0.2], price: 18.2 },
   { name: "Nut flour / paste", unit: "kg", perProduct: [0.22, 0.08, 0.34], price: 31.4 },
   { name: "Tea, herbs & garnish", unit: "set", perProduct: [1, 1, 1], price: 2.4 },
+];
+
+const productRenderings = [
+  {
+    src: "/renderings/moonlit-jasmine-hero.png",
+    label: "Finished exterior",
+    detail: "Form, glaze & decoration",
+    alt: "Photoreal rendering of the finished Moonlit Jasmine Cloud cake",
+  },
+  {
+    src: "/renderings/moonlit-jasmine-cutaway.png",
+    label: "Cutaway structure",
+    detail: "Layers & pear moon insert",
+    alt: "Photoreal cutaway rendering showing the Moonlit Jasmine Cloud cake layers",
+  },
 ];
 
 function cn(...parts: Array<string | false | null | undefined>) {
@@ -491,6 +507,8 @@ export default function Home() {
   const [draggedIdea, setDraggedIdea] = useState<number | null>(null);
   const [size, setSize] = useState<Size>("medium");
   const [museIndex, setMuseIndex] = useState(0);
+  const [renderIndex, setRenderIndex] = useState<number | null>(null);
+  const [renderingProduct, setRenderingProduct] = useState(false);
   const [bakeMode, setBakeMode] = useState<"diner" | "chef">("diner");
   const [menuStyle, setMenuStyle] = useState<"blush" | "editorial" | "pixel">(
     "blush"
@@ -514,6 +532,7 @@ export default function Home() {
   const selectedIdea =
     ideas.find((idea) => idea.id === selectedIdeaId) ?? ideas[0] ?? seedIdeas[0];
   const stageIndex = stageMeta.findIndex((item) => item.id === stage);
+  const activeProductRendering = productRenderings[renderIndex ?? 0];
 
   useEffect(() => {
     if (!toast) return;
@@ -522,6 +541,23 @@ export default function Home() {
   }, [toast]);
 
   const notify = (message: string) => setToast(message);
+
+  const generateProductRendering = () => {
+    if (renderingProduct) return;
+    setRenderingProduct(true);
+    notify("Turning your sketch and notes into a product reference…");
+    window.setTimeout(() => {
+      setRenderIndex((current) =>
+        current === null ? 0 : (current + 1) % productRenderings.length
+      );
+      setRenderingProduct(false);
+      notify(
+        renderIndex === null
+          ? "Your first product rendering is ready"
+          : "A new product rendering is ready"
+      );
+    }, 1500);
+  };
 
   const handleImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -612,6 +648,7 @@ export default function Home() {
       product: {
         title: "Moonlit Jasmine Cloud",
         size,
+        rendering: activeProductRendering.src,
         ingredients: ingredients.map((item) => ({
           ...item,
           amount: Math.round(item.amount * sizeScale[size]),
@@ -1112,10 +1149,96 @@ export default function Home() {
                   </div>
                   <span className="online-pill">online</span>
                 </div>
-                <div className="assistant-visual">
-                  <DessertArt compact />
-                  <span className="concept-badge">AI concept · v{museIndex + 1}.0</span>
+                <div
+                  className={cn(
+                    "assistant-visual",
+                    renderIndex !== null && "has-product-render",
+                    renderingProduct && "is-rendering"
+                  )}
+                  aria-live="polite"
+                >
+                  {renderIndex === null ? (
+                    <DessertArt compact />
+                  ) : (
+                    <img
+                      className="assistant-render-image"
+                      src={activeProductRendering.src}
+                      alt={activeProductRendering.alt}
+                    />
+                  )}
+                  <span className="concept-badge">
+                    {renderIndex === null
+                      ? `Design concept · v${museIndex + 1}.0`
+                      : `Product render · v${renderIndex + 1}.0`}
+                  </span>
+                  {renderIndex !== null && !renderingProduct && (
+                    <a
+                      className="render-download"
+                      href={activeProductRendering.src}
+                      download
+                      aria-label="Download this product rendering"
+                      data-tip="Download render"
+                    >
+                      <Download size={15} />
+                    </a>
+                  )}
+                  {renderingProduct && (
+                    <div className="rendering-overlay">
+                      <span className="rendering-orb">
+                        <LoaderCircle size={21} />
+                      </span>
+                      <strong>Rendering your dessert</strong>
+                      <small>Reading the sketch, notes and mood references…</small>
+                      <i><b /></i>
+                    </div>
+                  )}
                 </div>
+                <button
+                  className="primary-button full render-product-button"
+                  type="button"
+                  onClick={generateProductRendering}
+                  disabled={renderingProduct}
+                >
+                  {renderingProduct ? (
+                    <>
+                      <LoaderCircle className="spin-icon" size={16} /> Generating product rendering…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={16} />
+                      {renderIndex === null
+                        ? "Generate product rendering"
+                        : "Generate another rendering"}
+                    </>
+                  )}
+                </button>
+                <p className="render-source-note">
+                  <WandSparkles size={13} />
+                  Uses your canvas sketch, pinned annotations and mood references.
+                </p>
+                {renderIndex !== null && (
+                  <div className="render-variants" aria-label="Generated product renderings">
+                    {productRenderings.map((rendering, index) => (
+                      <button
+                        type="button"
+                        className={cn(index === renderIndex && "active")}
+                        key={rendering.src}
+                        onClick={() => {
+                          setRenderIndex(index);
+                          notify(`${rendering.label} selected for the design card`);
+                        }}
+                        aria-label={`Select ${rendering.label} rendering`}
+                      >
+                        <img src={rendering.src} alt="" />
+                        <span>
+                          <strong>{rendering.label}</strong>
+                          <small>{rendering.detail}</small>
+                        </span>
+                        {index === renderIndex && <Check size={13} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="assistant-note">
                   <Sparkles size={16} />
                   <p>
@@ -1141,6 +1264,10 @@ export default function Home() {
                   <div><Check size={14} /> Form & dimensions</div>
                   <div><Check size={14} /> Flavour mood</div>
                   <div><Check size={14} /> Finish annotations</div>
+                  <div className={cn(renderIndex === null && "pending-decision")}>
+                    {renderIndex === null ? <span /> : <Check size={14} />}
+                    Product reference rendering
+                  </div>
                 </div>
                 <button className="primary-button full" type="button" onClick={advance}>
                   Save design card <ArrowRight size={16} />
@@ -1173,17 +1300,28 @@ export default function Home() {
               <div className="product-column">
                 <div className="product-card paper-card">
                   <div className="product-card-top">
-                    <span className="eyebrow tiny">Product rendering · v1.0</span>
+                    <span className="eyebrow tiny">
+                      Product rendering · v{(renderIndex ?? 0) + 1}.0
+                    </span>
                     <div className="card-top-actions">
-                      <button className="icon-button" type="button" aria-label="Download rendering">
+                      <a
+                        className="icon-button"
+                        href={activeProductRendering.src}
+                        download
+                        aria-label="Download rendering"
+                      >
                         <Download size={15} />
-                      </button>
+                      </a>
                       <button className="icon-button" type="button" aria-label="More product options">
                         <Menu size={15} />
                       </button>
                     </div>
                   </div>
-                  <DessertArt />
+                  <img
+                    className="product-render-image"
+                    src={activeProductRendering.src}
+                    alt={activeProductRendering.alt}
+                  />
                   <div className="product-title-row">
                     <div>
                       <span>Product card · 01</span>

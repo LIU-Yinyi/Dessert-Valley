@@ -1575,8 +1575,20 @@ input[type="file"] {
   position: relative;
   overflow: hidden;
   margin: 14px 0 11px;
+  background: var(--lavender-soft);
   border: 1px solid var(--line);
   border-radius: 15px;
+}
+
+.assistant-visual.has-product-render {
+  aspect-ratio: 4 / 3;
+}
+
+.assistant-render-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .concept-badge {
@@ -1591,6 +1603,189 @@ input[type="file"] {
   border-radius: 6px;
   backdrop-filter: blur(6px);
   font-size: 7px;
+}
+
+.render-download {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 4;
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-soft);
+  text-decoration: none;
+  background: rgba(255, 255, 255, .82);
+  border: 1px solid rgba(255, 255, 255, .88);
+  border-radius: 8px;
+  box-shadow: 0 5px 14px rgba(55, 39, 50, .1);
+  backdrop-filter: blur(8px);
+}
+
+.render-download:hover {
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.rendering-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, .97), rgba(248, 239, 246, .91) 60%, rgba(226, 216, 239, .9));
+  text-align: center;
+  backdrop-filter: blur(8px);
+}
+
+.rendering-orb {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 9px;
+  color: var(--accent);
+  background: rgba(255, 255, 255, .74);
+  border: 1px solid rgba(255, 255, 255, .9);
+  border-radius: 14px;
+  box-shadow: 0 10px 25px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.rendering-overlay strong {
+  font-family: Georgia, serif;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.rendering-overlay small {
+  max-width: 210px;
+  margin-top: 4px;
+  color: var(--ink-soft);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.rendering-overlay > i {
+  width: 68%;
+  height: 4px;
+  overflow: hidden;
+  margin-top: 14px;
+  background: rgba(255, 255, 255, .75);
+  border-radius: 999px;
+}
+
+.rendering-overlay > i b {
+  width: 42%;
+  height: 100%;
+  display: block;
+  background: linear-gradient(90deg, var(--accent), var(--lavender));
+  border-radius: inherit;
+  animation: render-progress 1.1s ease-in-out infinite;
+}
+
+@keyframes render-progress {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(250%); }
+}
+
+.rendering-orb svg,
+.spin-icon {
+  animation: render-spin 1.25s linear infinite;
+}
+
+@keyframes render-spin {
+  to { transform: rotate(360deg); }
+}
+
+.render-product-button {
+  min-height: 41px;
+}
+
+.render-source-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 7px 0 11px;
+  color: var(--muted);
+  font-size: 7px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.render-source-note svg {
+  flex: 0 0 auto;
+  color: var(--lavender);
+}
+
+.render-variants {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 11px;
+}
+
+.render-variants button {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  color: var(--ink-soft);
+  text-align: left;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  transition: .18s ease;
+}
+
+.render-variants button:hover,
+.render-variants button.active {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 28%, var(--paper));
+}
+
+.render-variants button img {
+  width: 54px;
+  height: 40px;
+  display: block;
+  object-fit: cover;
+  border-radius: 7px;
+}
+
+.render-variants button span,
+.render-variants button strong,
+.render-variants button small {
+  min-width: 0;
+  display: block;
+}
+
+.render-variants button strong {
+  overflow: hidden;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.render-variants button small {
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.render-variants button > svg {
+  color: var(--accent);
 }
 
 .assistant-note {
@@ -1634,6 +1829,18 @@ input[type="file"] {
 
 .design-decisions svg {
   color: var(--sage);
+}
+
+.design-decisions .pending-decision {
+  color: var(--muted);
+}
+
+.pending-decision > span {
+  width: 14px;
+  height: 14px;
+  display: block;
+  border: 1px dashed var(--line-strong);
+  border-radius: 50%;
 }
 
 .dessert-art {
@@ -1845,6 +2052,18 @@ input[type="file"] {
 
 .product-card {
   overflow: hidden;
+}
+
+.product-render-image {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  display: block;
+  object-fit: cover;
+  background: var(--lavender-soft);
+}
+
+.product-card .icon-button {
+  text-decoration: none;
 }
 
 .product-card-top {
