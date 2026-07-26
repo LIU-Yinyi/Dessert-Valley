@@ -69,6 +69,23 @@ type IdeaCard = {
   status: IdeaStatus;
 };
 
+type SketchIntent = {
+  preview: string;
+  annotations: string[];
+  brushColor: string;
+  brushSize: number;
+  revision: number;
+};
+
+type CapturedDesignIntent = {
+  sketch: SketchIntent;
+  moods: string[];
+  referenceName: string;
+  referencePreview: string;
+  voiceNote: boolean;
+  inputCount: number;
+};
+
 const stageMeta: {
   id: Stage;
   label: string;
@@ -258,6 +275,43 @@ const productRenderings: Record<
   ],
 };
 
+const moodPresets: Record<
+  DessertVariant,
+  { label: string; className: string }[]
+> = {
+  moon: [
+    { label: "moon pearl", className: "mood-moon" },
+    { label: "soft tea veil", className: "mood-ribbon" },
+    { label: "jasmine bloom", className: "mood-flower" },
+  ],
+  berry: [
+    { label: "berry blush", className: "mood-moon" },
+    { label: "gingham ribbon", className: "mood-ribbon" },
+    { label: "picnic blossom", className: "mood-flower" },
+  ],
+  garden: [
+    { label: "pistachio moss", className: "mood-moon" },
+    { label: "honey ribbon", className: "mood-ribbon" },
+    { label: "chamomile", className: "mood-flower" },
+  ],
+};
+
+const seedAnnotations: Record<DessertVariant, string[]> = {
+  moon: ["crystal tea veil", "soft almond base"],
+  berry: ["edible gingham lid", "fresh berry layers"],
+  garden: ["pistachio moss", "hidden honey centre"],
+};
+
+function freshSketchIntent(variant: DessertVariant): SketchIntent {
+  return {
+    preview: "",
+    annotations: [...seedAnnotations[variant]],
+    brushColor: "#665273",
+    brushSize: 5,
+    revision: 0,
+  };
+}
+
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
@@ -338,9 +392,11 @@ function InputTools({
 
 function SketchCanvas({
   onToast,
+  onIntentChange,
   variant,
 }: {
   onToast: (message: string) => void;
+  onIntentChange: (intent: SketchIntent) => void;
   variant: DessertVariant;
 }) {
   type CanvasLabel = { id: number; x: number; y: number; text: string };
@@ -372,6 +428,7 @@ function SketchCanvas({
   const lastPoint = useRef<{ x: number; y: number } | null>(null);
   const undoStack = useRef<CanvasSnapshot[]>([]);
   const redoStack = useRef<CanvasSnapshot[]>([]);
+  const intentRevision = useRef(0);
   const [drawing, setDrawing] = useState(false);
   const [tool, setTool] = useState<"brush" | "eraser">("brush");
   const [brushColor, setBrushColor] = useState("#665273");
@@ -383,6 +440,23 @@ function SketchCanvas({
     startingLabels[variant].map((label) => ({ ...label }))
   );
   const [, refreshHistoryControls] = useState(0);
+
+  const emitIntent = (
+    nextLabels = labels,
+    nextColor = brushColor,
+    nextSize = brushSize
+  ) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    intentRevision.current += 1;
+    onIntentChange({
+      preview: canvas.toDataURL("image/png"),
+      annotations: nextLabels.map((label) => label.text),
+      brushColor: nextColor,
+      brushSize: nextSize,
+      revision: intentRevision.current,
+    });
+  };
 
   const drawGuide = () => {
     const canvas = canvasRef.current;
@@ -478,6 +552,12 @@ function SketchCanvas({
 
   useEffect(() => {
     drawGuide();
+    const initialLabels = startingLabels[variant].map((label) => ({ ...label }));
+    setLabels(initialLabels);
+    undoStack.current = [];
+    redoStack.current = [];
+    const frame = window.requestAnimationFrame(() => emitIntent(initialLabels));
+    return () => window.cancelAnimationFrame(frame);
   }, [variant]);
 
   const captureSnapshot = (currentLabels = labels): CanvasSnapshot | null => {
@@ -505,7 +585,9 @@ function SketchCanvas({
     if (!canvas || !ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.putImageData(snapshot.image, 0, 0);
-    setLabels(snapshot.labels.map((label) => ({ ...label })));
+    const restoredLabels = snapshot.labels.map((label) => ({ ...label }));
+    setLabels(restoredLabels);
+    emitIntent(restoredLabels);
   };
 
   const undo = () => {
@@ -541,15 +623,17 @@ function SketchCanvas({
     if (placingLabel && annotationText.trim()) {
       rememberCurrentState();
       const rect = event.currentTarget.getBoundingClientRect();
-      setLabels((current) => [
-        ...current,
+      const nextLabels = [
+        ...labels,
         {
           id: Date.now(),
           x: ((event.clientX - rect.left) / rect.width) * 100,
           y: ((event.clientY - rect.top) / rect.height) * 100,
           text: annotationText.trim(),
         },
-      ]);
+      ];
+      setLabels(nextLabels);
+      emitIntent(nextLabels);
       setAnnotationText("");
       setPlacingLabel(false);
       onToast("Annotation pinned to your sketch");
@@ -582,8 +666,10 @@ function SketchCanvas({
   };
 
   const stopDrawing = () => {
+    const changed = lastPoint.current !== null;
     setDrawing(false);
     lastPoint.current = null;
+    if (changed) emitIntent();
   };
 
   return (
@@ -644,6 +730,7 @@ function SketchCanvas({
               rememberCurrentState();
               drawGuide();
               setLabels([]);
+              emitIntent([]);
               onToast("Canvas reset");
             }}
             aria-label="Reset canvas"
@@ -667,6 +754,7 @@ function SketchCanvas({
                   onClick={() => {
                     setBrushColor(color);
                     setTool("brush");
+                    emitIntent(labels, color, brushSize);
                   }}
                   role="radio"
                   aria-checked={color === brushColor}
@@ -681,8 +769,10 @@ function SketchCanvas({
                   type="color"
                   value={brushColor}
                   onChange={(event) => {
-                    setBrushColor(event.target.value);
+                    const nextColor = event.target.value;
+                    setBrushColor(nextColor);
                     setTool("brush");
+                    emitIntent(labels, nextColor, brushSize);
                   }}
                   aria-label="Choose a custom brush color"
                 />
@@ -703,6 +793,8 @@ function SketchCanvas({
                 step="1"
                 value={brushSize}
                 onChange={(event) => setBrushSize(Number(event.target.value))}
+                onPointerUp={() => emitIntent(labels, brushColor, brushSize)}
+                onBlur={() => emitIntent(labels, brushColor, brushSize)}
                 aria-label="Brush size"
               />
               <span className="brush-dot large" />
@@ -735,7 +827,9 @@ function SketchCanvas({
             style={{ left: `${label.x}%`, top: `${label.y}%` }}
             onClick={() => {
               rememberCurrentState();
-              setLabels((current) => current.filter((item) => item.id !== label.id));
+              const nextLabels = labels.filter((item) => item.id !== label.id);
+              setLabels(nextLabels);
+              emitIntent(nextLabels);
             }}
             type="button"
             aria-label={`Remove annotation: ${label.text}`}
@@ -784,6 +878,15 @@ export default function Home() {
   );
   const [recording, setRecording] = useState(false);
   const [referenceName, setReferenceName] = useState("");
+  const [referencePreview, setReferencePreview] = useState("");
+  const [selectedMoods, setSelectedMoods] = useState<string[]>(
+    moodPresets.moon.map((mood) => mood.label)
+  );
+  const [sketchIntent, setSketchIntent] = useState<SketchIntent>(() =>
+    freshSketchIntent("moon")
+  );
+  const [lastRenderIntent, setLastRenderIntent] =
+    useState<CapturedDesignIntent | null>(null);
   const [draggedIdea, setDraggedIdea] = useState<number | null>(null);
   const [size, setSize] = useState<Size>("medium");
   const [museIndex, setMuseIndex] = useState(0);
@@ -817,6 +920,13 @@ export default function Home() {
   const availableProductRenderings = productRenderings[selectedVariant];
   const activeProductRendering =
     availableProductRenderings[renderIndex ?? 0] ?? availableProductRenderings[0];
+  const activeMoodPresets = moodPresets[selectedVariant];
+  const designInputCount =
+    1 +
+    sketchIntent.annotations.length +
+    selectedMoods.length +
+    (referenceName ? 1 : 0) +
+    (recording ? 1 : 0);
 
   useEffect(() => {
     if (!toast) return;
@@ -828,17 +938,38 @@ export default function Home() {
 
   const generateProductRendering = () => {
     if (renderingProduct) return;
-    setRenderingProduct(true);
-    notify("Turning your sketch and notes into a product reference…");
-    window.setTimeout(() => {
-      setRenderIndex((current) =>
-        current === null ? 0 : (current + 1) % availableProductRenderings.length
+    const capturedIntent: CapturedDesignIntent = {
+      sketch: { ...sketchIntent },
+      moods: [...selectedMoods],
+      referenceName,
+      referencePreview,
+      voiceNote: recording,
+      inputCount: designInputCount,
+    };
+    const structuralDirection = sketchIntent.annotations
+      .join(" ")
+      .toLowerCase();
+    const intentRequestsCutaway =
+      selectedVariant === "moon" &&
+      /(inside|insert|cutaway|cross.?section|centre|center|layer)/i.test(
+        structuralDirection
       );
+    const nextRenderIndex = intentRequestsCutaway
+      ? 1
+      : renderIndex === null
+        ? 0
+        : (renderIndex + 1) % availableProductRenderings.length;
+
+    setLastRenderIntent(capturedIntent);
+    setRenderingProduct(true);
+    notify(`Combining ${designInputCount} visual design inputs…`);
+    window.setTimeout(() => {
+      setRenderIndex(nextRenderIndex);
       setRenderingProduct(false);
       notify(
         renderIndex === null
-          ? "Your first product rendering is ready"
-          : "A new product rendering is ready"
+          ? "Your combined-intent product rendering is ready"
+          : "A revised product rendering is ready"
       );
     }, 1500);
   };
@@ -847,7 +978,11 @@ export default function Home() {
     const file = event.target.files?.[0];
     if (!file) return;
     setReferenceName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => setReferencePreview(String(reader.result ?? ""));
+    reader.readAsDataURL(file);
     notify(`${file.name} added as a visual reference`);
+    event.target.value = "";
   };
 
   const classifyIdeas = () => {
@@ -898,8 +1033,13 @@ export default function Home() {
   };
 
   const selectAndAdvance = (id: number) => {
+    const nextIdea = ideas.find((idea) => idea.id === id) ?? seedIdeas[0];
+    const nextVariant = dessertVariantForIdea(nextIdea);
     setSelectedIdeaId(id);
     setRenderIndex(null);
+    setLastRenderIntent(null);
+    setSketchIntent(freshSketchIntent(nextVariant));
+    setSelectedMoods(moodPresets[nextVariant].map((mood) => mood.label));
     setMuseIndex(0);
     setStage("design");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -907,9 +1047,13 @@ export default function Home() {
   };
 
   const chooseDesignIdea = (idea: IdeaCard) => {
+    const nextVariant = dessertVariantForIdea(idea);
     setSelectedIdeaId(idea.id);
     setIdeaPickerOpen(false);
     setRenderIndex(null);
+    setLastRenderIntent(null);
+    setSketchIntent(freshSketchIntent(nextVariant));
+    setSelectedMoods(moodPresets[nextVariant].map((mood) => mood.label));
     setMuseIndex(0);
     notify(`${idea.title} is ready on the design canvas`);
   };
@@ -939,6 +1083,15 @@ export default function Home() {
       exportedAt: new Date().toISOString(),
       ideas,
       selectedIdea,
+      design: {
+        annotations: sketchIntent.annotations,
+        brushColor: sketchIntent.brushColor,
+        brushSize: sketchIntent.brushSize,
+        moods: selectedMoods,
+        referenceName,
+        voiceNote: recording,
+        renderingInputs: lastRenderIntent?.inputCount ?? designInputCount,
+      },
       product: {
         title: selectedIdea.title,
         size,
@@ -1231,7 +1384,14 @@ export default function Home() {
               {referenceName && (
                 <div className="reference-pill">
                   <FileImage size={14} /> {referenceName}
-                  <button onClick={() => setReferenceName("")} type="button" aria-label="Remove reference image">
+                  <button
+                    onClick={() => {
+                      setReferenceName("");
+                      setReferencePreview("");
+                    }}
+                    type="button"
+                    aria-label="Remove reference image"
+                  >
                     <X size={13} />
                   </button>
                 </div>
@@ -1429,55 +1589,131 @@ export default function Home() {
                   <div>
                     <span className="section-index">01</span>
                     <div>
-                      <strong>Shape & proportion</strong>
-                      <small>Sketch the form, then pin notes to exact details.</small>
+                      <strong>Design intent board</strong>
+                      <small>Shape, annotations and references become one render input.</small>
                     </div>
                   </div>
                   <span className="autosave">
                     <Check size={13} /> Saved
                   </span>
                 </div>
-                <SketchCanvas
-                  key={selectedIdea.id}
-                  onToast={notify}
-                  variant={selectedVariant}
-                />
-
-                <div className="reference-strip">
-                  <div className="section-title-row compact">
+                <div className="design-input-board">
+                  <div className="intent-board-header">
                     <div>
-                      <span className="section-index">02</span>
+                      <Layers3 size={15} />
                       <div>
-                        <strong>References & mood</strong>
-                        <small>Mix in a photo, voice note or written direction.</small>
+                        <strong>Unified visual input</strong>
+                        <small>Every edit below travels together to the renderer.</small>
                       </div>
                     </div>
+                    <span>{designInputCount} linked inputs</span>
                   </div>
-                  <div className="reference-cards">
-                    <label className="add-reference-card">
-                      <ImagePlus size={20} />
-                      <span>Add image</span>
-                      <small>PNG, JPG or HEIC</small>
-                      <input type="file" accept="image/*" onChange={handleImage} />
-                    </label>
-                    <div className="mood-card mood-moon">
-                      <span>moon pearl</span>
+                  <SketchCanvas
+                    key={selectedIdea.id}
+                    onToast={notify}
+                    onIntentChange={setSketchIntent}
+                    variant={selectedVariant}
+                  />
+
+                  <div className="reference-dock">
+                    <div className="reference-dock-header">
+                      <div>
+                        <ImagePlus size={15} />
+                        <span>
+                          <strong>Reference dock</strong>
+                          <small>Photos, mood cues and voice refine the same sketch.</small>
+                        </span>
+                      </div>
+                      <small>Select any cues that should influence the finish.</small>
                     </div>
-                    <div className="mood-card mood-ribbon">
-                      <span>soft veil</span>
+                    <div className="reference-cards">
+                      <div className="reference-upload-slot">
+                        <label className={cn("add-reference-card", referencePreview && "has-preview")}>
+                          {referencePreview ? (
+                            <>
+                              <img
+                                className="reference-upload-preview"
+                                src={referencePreview}
+                                alt="Uploaded visual reference"
+                              />
+                              <span>{referenceName}</span>
+                              <small>Tap to replace</small>
+                            </>
+                          ) : (
+                            <>
+                              <ImagePlus size={20} />
+                              <span>Add image</span>
+                              <small>PNG, JPG or HEIC</small>
+                            </>
+                          )}
+                          <input type="file" accept="image/*" onChange={handleImage} />
+                        </label>
+                        {referencePreview && (
+                          <button
+                            className="clear-reference"
+                            type="button"
+                            onClick={() => {
+                              setReferenceName("");
+                              setReferencePreview("");
+                              notify("Visual reference removed");
+                            }}
+                            aria-label="Remove uploaded visual reference"
+                            data-tip="Remove reference"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                      {activeMoodPresets.map((mood) => {
+                        const active = selectedMoods.includes(mood.label);
+                        return (
+                          <button
+                            className={cn("mood-card", mood.className, active && "active")}
+                            type="button"
+                            key={mood.label}
+                            aria-pressed={active}
+                            onClick={() =>
+                              setSelectedMoods((current) =>
+                                current.includes(mood.label)
+                                  ? current.filter((item) => item !== mood.label)
+                                  : [...current, mood.label]
+                              )
+                            }
+                          >
+                            <span>{mood.label}</span>
+                            {active && <Check size={13} />}
+                          </button>
+                        );
+                      })}
+                      <button
+                        className={cn("voice-reference-card", recording && "active")}
+                        type="button"
+                        onClick={() => setRecording((current) => !current)}
+                        aria-pressed={recording}
+                      >
+                        <AudioLines size={19} />
+                        <span>{recording ? "Voice linked" : "Add voice note"}</span>
+                        <i />
+                      </button>
                     </div>
-                    <div className="mood-card mood-flower">
-                      <span>jasmine</span>
+                  </div>
+
+                  <div className="intent-package-bar">
+                    <div>
+                      <span className="intent-status-icon"><Check size={13} /></span>
+                      <span>
+                        <strong>Ready as one intent package</strong>
+                        <small>
+                          Sketch v{Math.max(sketchIntent.revision, 1)} ·{" "}
+                          {sketchIntent.annotations.length} annotations ·{" "}
+                          {selectedMoods.length} mood cues
+                        </small>
+                      </span>
                     </div>
-                    <button
-                      className={cn("voice-reference-card", recording && "active")}
-                      type="button"
-                      onClick={() => setRecording((current) => !current)}
-                    >
-                      <AudioLines size={19} />
-                      <span>{recording ? "Listening…" : "Add voice note"}</span>
-                      <i />
-                    </button>
+                    <ArrowRight size={16} />
+                    <span className="intent-output-pill">
+                      <WandSparkles size={13} /> Product rendering
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1500,6 +1736,12 @@ export default function Home() {
                     renderIndex !== null && "has-product-render",
                     renderingProduct && "is-rendering"
                   )}
+                  style={
+                    {
+                      "--intent-color":
+                        lastRenderIntent?.sketch.brushColor ?? sketchIntent.brushColor,
+                    } as CSSProperties
+                  }
                   aria-live="polite"
                 >
                   {renderIndex === null ? (
@@ -1533,7 +1775,10 @@ export default function Home() {
                         <LoaderCircle size={21} />
                       </span>
                       <strong>Rendering your dessert</strong>
-                      <small>Reading the sketch, notes and mood references…</small>
+                      <small>
+                        Composing {lastRenderIntent?.inputCount ?? designInputCount} linked
+                        inputs: canvas pixels, annotations and references…
+                      </small>
                       <i><b /></i>
                     </div>
                   )}
@@ -1560,9 +1805,66 @@ export default function Home() {
                   )}
                 </button>
                 <p className="render-source-note">
-                  <WandSparkles size={13} />
-                  Uses your canvas sketch, pinned annotations and mood references.
+                  <Layers3 size={13} />
+                  Sends the captured canvas image and selected references together—not
+                  just the written description.
                 </p>
+                {renderIndex !== null && lastRenderIntent && (
+                  <div className="render-intent-receipt">
+                    <div className="intent-receipt-heading">
+                      <span>
+                        <Layers3 size={14} />
+                        <span>
+                          <strong>Combined intent applied</strong>
+                          <small>{lastRenderIntent.inputCount} inputs shaped this result</small>
+                        </span>
+                      </span>
+                      <Check size={14} />
+                    </div>
+                    <div className="intent-source-flow">
+                      <figure>
+                        {lastRenderIntent.sketch.preview ? (
+                          <img src={lastRenderIntent.sketch.preview} alt="Captured design sketch" />
+                        ) : (
+                          <Pencil size={17} />
+                        )}
+                        <figcaption>Sketch</figcaption>
+                      </figure>
+                      {lastRenderIntent.referencePreview ? (
+                        <figure>
+                          <img
+                            src={lastRenderIntent.referencePreview}
+                            alt="Captured uploaded reference"
+                          />
+                          <figcaption>Photo</figcaption>
+                        </figure>
+                      ) : (
+                        <figure className="mood-source">
+                          <Flower2 size={17} />
+                          <figcaption>Mood</figcaption>
+                        </figure>
+                      )}
+                      <ArrowRight size={15} />
+                      <span className="intent-result-mark">
+                        <WandSparkles size={15} />
+                        <small>Rendered</small>
+                      </span>
+                    </div>
+                    <div className="intent-receipt-chips">
+                      {lastRenderIntent.sketch.annotations.slice(0, 2).map((annotation) => (
+                        <span key={annotation}>↳ {annotation}</span>
+                      ))}
+                      {lastRenderIntent.moods.slice(0, 2).map((mood) => (
+                        <span key={mood}>✦ {mood}</span>
+                      ))}
+                      {lastRenderIntent.voiceNote && <span>⌁ voice direction</span>}
+                    </div>
+                    <p>
+                      Interpreted as <strong>{activeProductRendering.label}</strong> for{" "}
+                      <strong>{selectedIdea.title}</strong>.
+                    </p>
+                  </div>
+                )}
                 {renderIndex !== null && (
                   <div className="render-variants" aria-label="Generated product renderings">
                     {availableProductRenderings.map((rendering, index) => (

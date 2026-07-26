@@ -1463,6 +1463,80 @@ input[type="file"] {
   font-size: 8px;
 }
 
+.design-input-board {
+  overflow: hidden;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-small);
+}
+
+.intent-board-header {
+  min-height: 51px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent-soft) 35%, var(--paper)), var(--paper));
+  border-bottom: 1px solid var(--line);
+}
+
+.intent-board-header > div,
+.reference-dock-header > div,
+.intent-package-bar > div,
+.intent-package-bar > div > span:last-child {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.intent-board-header svg,
+.reference-dock-header svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.intent-board-header strong,
+.intent-board-header small,
+.reference-dock-header strong,
+.reference-dock-header small,
+.intent-package-bar strong,
+.intent-package-bar small {
+  display: block;
+}
+
+.intent-board-header strong,
+.reference-dock-header strong {
+  font-size: 9px;
+}
+
+.intent-board-header small,
+.reference-dock-header small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 7px;
+}
+
+.intent-board-header > span {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  color: var(--accent-deep);
+  background: color-mix(in srgb, var(--paper) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border-radius: 999px;
+  font-size: 7px;
+  font-weight: 750;
+}
+
+.design-input-board .sketch-shell {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .sketch-shell {
   overflow: hidden;
   background: var(--paper);
@@ -1804,8 +1878,25 @@ input[type="file"] {
   background: var(--accent);
 }
 
-.reference-strip {
-  margin-top: 19px;
+.reference-dock {
+  padding: 13px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--canvas) 44%, var(--paper)), var(--paper));
+  border-top: 1px solid var(--line);
+}
+
+.reference-dock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.reference-dock-header > small {
+  max-width: 190px;
+  margin: 0;
+  text-align: right;
 }
 
 .reference-cards {
@@ -1829,10 +1920,81 @@ input[type="file"] {
 }
 
 .add-reference-card {
+  position: relative;
   color: var(--accent);
   background: color-mix(in srgb, var(--paper) 70%, transparent);
   border: 1px dashed color-mix(in srgb, var(--accent) 42%, var(--line));
   cursor: pointer;
+}
+
+.reference-upload-slot {
+  position: relative;
+  min-height: 92px;
+}
+
+.reference-upload-slot .add-reference-card {
+  width: 100%;
+  height: 100%;
+}
+
+.add-reference-card.has-preview {
+  color: white;
+  background: #6d5b69;
+  border-style: solid;
+}
+
+.add-reference-card.has-preview::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, transparent 25%, rgba(46, 31, 41, .78));
+}
+
+.reference-upload-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.add-reference-card.has-preview span,
+.add-reference-card.has-preview small {
+  position: relative;
+  z-index: 2;
+  max-width: calc(100% - 18px);
+  overflow: hidden;
+  color: white;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-reference-card.has-preview span {
+  margin-top: auto;
+  font-weight: 750;
+}
+
+.add-reference-card.has-preview small {
+  margin-bottom: 8px;
+  color: rgba(255, 255, 255, .76);
+}
+
+.clear-reference {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 4;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--ink);
+  background: rgba(255, 255, 255, .86);
+  border: 1px solid rgba(255, 255, 255, .9);
+  border-radius: 7px;
+  box-shadow: var(--shadow-small);
 }
 
 .add-reference-card small {
@@ -1842,8 +2004,22 @@ input[type="file"] {
 
 .mood-card {
   position: relative;
+  padding: 0;
+  color: var(--ink);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-small);
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+.mood-card:hover {
+  transform: translateY(-2px);
+}
+
+.mood-card.active {
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent),
+    var(--shadow-small);
 }
 
 .mood-card::before {
@@ -1878,6 +2054,20 @@ input[type="file"] {
   font-size: 7px;
 }
 
+.mood-card > svg {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 19px;
+  height: 19px;
+  padding: 4px;
+  color: white;
+  background: var(--accent);
+  border: 1px solid rgba(255,255,255,.8);
+  border-radius: 50%;
+}
+
 .voice-reference-card {
   padding: 0;
   color: var(--ink-soft);
@@ -1885,11 +2075,73 @@ input[type="file"] {
   border: 1px solid var(--line);
 }
 
+.voice-reference-card.active {
+  color: var(--accent-deep);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
 .voice-reference-card i {
   width: 52%;
   height: 8px;
   background: repeating-linear-gradient(90deg, var(--accent) 0 2px, transparent 2px 5px);
   opacity: 0.45;
+}
+
+.intent-package-bar {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--sage-soft) 35%, var(--paper));
+  border-top: 1px solid var(--line);
+}
+
+.intent-package-bar > div {
+  flex: 1;
+}
+
+.intent-package-bar > svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.intent-package-bar strong {
+  font-size: 8px;
+}
+
+.intent-package-bar small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 7px;
+}
+
+.intent-status-icon {
+  width: 27px;
+  height: 27px;
+  flex: 0 0 27px;
+  display: grid;
+  place-items: center;
+  color: #4d7957;
+  background: var(--sage-soft);
+  border: 1px solid color-mix(in srgb, var(--sage) 30%, var(--line));
+  border-radius: 9px;
+}
+
+.intent-output-pill {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 9px;
+  color: var(--accent-deep);
+  background: var(--paper);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border-radius: 9px;
+  font-size: 7px;
+  font-weight: 750;
 }
 
 .design-assistant {
@@ -1923,6 +2175,8 @@ input[type="file"] {
 
 .assistant-visual.has-product-render {
   aspect-ratio: 4 / 3;
+  border-color: color-mix(in srgb, var(--intent-color, var(--accent)) 42%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--intent-color, var(--accent)) 8%, transparent);
 }
 
 .assistant-render-image {
@@ -2063,6 +2317,158 @@ input[type="file"] {
 .render-source-note svg {
   flex: 0 0 auto;
   color: var(--lavender);
+}
+
+.render-intent-receipt {
+  margin: 0 0 11px;
+  padding: 10px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent-soft) 24%, var(--paper)), var(--paper));
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border-radius: 12px;
+}
+
+.intent-receipt-heading,
+.intent-receipt-heading > span,
+.intent-receipt-heading > span > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.intent-receipt-heading {
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.intent-receipt-heading > span {
+  gap: 7px;
+}
+
+.intent-receipt-heading > span > span {
+  display: block;
+}
+
+.intent-receipt-heading svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.intent-receipt-heading > svg:last-child {
+  color: var(--sage);
+}
+
+.intent-receipt-heading strong,
+.intent-receipt-heading small {
+  display: block;
+}
+
+.intent-receipt-heading strong {
+  font-size: 8px;
+}
+
+.intent-receipt-heading small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 6px;
+}
+
+.intent-source-flow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 9px 0;
+}
+
+.intent-source-flow figure {
+  position: relative;
+  width: 57px;
+  height: 46px;
+  flex: 0 0 57px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  margin: 0;
+  color: var(--accent);
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.intent-source-flow figure img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.intent-source-flow figure figcaption {
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  padding: 2px 4px;
+  color: var(--ink);
+  background: rgba(255,255,255,.82);
+  border-radius: 4px;
+  font-size: 5px;
+  line-height: 1;
+}
+
+.intent-source-flow > svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.intent-result-mark {
+  min-width: 52px;
+  height: 46px;
+  flex: 1;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  color: white;
+  background: linear-gradient(135deg, var(--accent), var(--lavender));
+  border-radius: 8px;
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.intent-result-mark small {
+  color: rgba(255,255,255,.8);
+  font-size: 5px;
+}
+
+.intent-receipt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.intent-receipt-chips span {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 5px;
+  color: var(--ink-soft);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.render-intent-receipt > p {
+  margin: 8px 0 0;
+  padding-top: 7px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  font-size: 6px;
+  line-height: 1.45;
+}
+
+.render-intent-receipt > p strong {
+  color: var(--ink-soft);
+  font-weight: 700;
 }
 
 .render-variants {
@@ -3800,6 +4206,34 @@ input[type="file"] {
 
   .reference-cards {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .intent-board-header {
+    align-items: flex-start;
+  }
+
+  .intent-board-header > span {
+    margin-top: 2px;
+  }
+
+  .reference-dock-header > small {
+    display: none;
+  }
+
+  .intent-package-bar {
+    flex-wrap: wrap;
+  }
+
+  .intent-package-bar > div {
+    flex-basis: calc(100% - 28px);
+  }
+
+  .intent-package-bar > svg {
+    display: none;
+  }
+
+  .intent-output-pill {
+    margin-left: 35px;
   }
 
   .brush-panel {
