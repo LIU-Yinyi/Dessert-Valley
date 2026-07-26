@@ -382,46 +382,58 @@ function CanvasPad({
           </button>
         </div>
         <div className="canvas-controls">
-          <label className="color-dot" style={{ "--ink": color } as CSSProperties}>
-            <input
-              type="color"
-              value={color}
-              onChange={(event) => setColor(event.target.value)}
-              aria-label="Pencil color"
-            />
-          </label>
-          <label className="size-slider">
-            <span>{size}px</span>
-            <input
-              type="range"
-              min="2"
-              max="18"
-              value={size}
-              onChange={(event) => setSize(Number(event.target.value))}
-              aria-label="Pencil size"
-            />
-          </label>
-          <button
-            className="square-button"
-            type="button"
-            onClick={undo}
-            disabled={historyState.undo === 0}
-            aria-label="Undo"
-          >
-            <Undo2 size={15} />
-          </button>
-          <button
-            className="square-button"
-            type="button"
-            onClick={redo}
-            disabled={historyState.redo === 0}
-            aria-label="Redo"
-          >
-            <Redo2 size={15} />
-          </button>
-          <button className="square-button" type="button" onClick={clear} aria-label="Clear canvas">
-            <Trash2 size={15} />
-          </button>
+          <div className="brush-controls">
+            <label
+              className="color-control"
+              style={{ "--pencil-color": color } as CSSProperties}
+            >
+              <span className="color-swatch" aria-hidden="true" />
+              <span>Color</span>
+              <input
+                className="native-color-input"
+                type="color"
+                value={color}
+                onChange={(event) => setColor(event.target.value)}
+                aria-label="Pencil color"
+              />
+            </label>
+            <label className="size-slider">
+              <span>
+                Size <strong>{size}px</strong>
+              </span>
+              <input
+                type="range"
+                min="2"
+                max="18"
+                value={size}
+                onChange={(event) => setSize(Number(event.target.value))}
+                aria-label="Pencil size"
+              />
+            </label>
+          </div>
+          <div className="history-controls">
+            <button
+              className="square-button"
+              type="button"
+              onClick={undo}
+              disabled={historyState.undo === 0}
+              aria-label="Undo"
+            >
+              <Undo2 size={15} />
+            </button>
+            <button
+              className="square-button"
+              type="button"
+              onClick={redo}
+              disabled={historyState.redo === 0}
+              aria-label="Redo"
+            >
+              <Redo2 size={15} />
+            </button>
+            <button className="square-button" type="button" onClick={clear} aria-label="Clear canvas">
+              <Trash2 size={15} />
+            </button>
+          </div>
         </div>
       </div>
       <div className="blank-canvas-wrap">
