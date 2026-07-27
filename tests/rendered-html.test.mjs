@@ -46,8 +46,10 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
     packageJson,
     renderRoute,
     planAdviceRoute,
+    materialImportRoute,
     handbookRoute,
     workspaceStorage,
+    handbookStorage,
   ] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
@@ -55,8 +57,10 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/render/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/plan-advice/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/material-import/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/handbook-render/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/workspace-storage.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/handbook-storage.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /type ReferenceKind = "text" \| "audio" \| "image" \| "canvas"/);
@@ -90,13 +94,33 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /fetch\("\/api\/plan-advice"/);
   assert.match(page, /material-aware steps/);
   assert.match(page, /planAdviceErrors/);
+  assert.match(page, /fetch\("\/api\/material-import"/);
+  assert.match(page, /function MaterialImportDialog/);
+  assert.match(page, /navigator\.mediaDevices\.getUserMedia/);
+  assert.match(page, /new MediaRecorder/);
+  assert.match(page, /"Record audio", "录制音频"/);
+  assert.match(page, /"Stop recording", "停止录音"/);
+  assert.match(page, /className="material-upload-menu"/);
+  assert.match(page, /"Text", "文字"/);
+  assert.match(page, /"Audio", "音频"/);
+  assert.match(page, /"Image", "图片"/);
+  assert.match(page, /Only rows you confirm are saved/);
+  assert.match(page, /setActiveMaterials\(\(current\) => \[\.\.\.current, \.\.\.rows\]\)/);
   assert.match(page, /fetch\("\/api\/handbook-render"/);
   assert.match(page, /handbookStylePrompt/);
   assert.match(page, /handbookReferenceImage/);
+  assert.match(page, /handbookPageCount/);
   assert.match(page, /selectedHandbookIdeas/);
   assert.match(page, /Generate AI handbook/);
   assert.match(page, /localizedIdeaName\(idea, language\)/);
   assert.match(page, /className="handbook-sheet"/);
+  assert.match(page, /className="handbook-page-image"/);
+  assert.match(page, /turnHandbookPage\("next"\)/);
+  assert.match(page, /turnHandbookPage\("previous"\)/);
+  assert.match(page, /Selected dessert cards are attached to every page prompt/);
+  assert.match(page, /exportHandbookImages/);
+  assert.match(page, /className="handbook-print-pages"/);
+  assert.doesNotMatch(page, /handbook-sheet-content|handbook-preview-list/);
   assert.doesNotMatch(page, /selectedHandbookRows|selectedMenuRows/);
   assert.doesNotMatch(page, /Every style batch is its own configurable card/);
   assert.doesNotMatch(page, /style cards selected/);
@@ -109,6 +133,12 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.doesNotMatch(page, /className="avatar"/);
   assert.match(page, /Empty dessert sketch canvas/);
   assert.match(page, /className="agent-window"/);
+  assert.match(page, /data-global-assistant="true"/);
+  assert.match(page, /aria-controls="pastry-agent-window"/);
+  assert.doesNotMatch(
+    page,
+    /stage === "product" && \(\s*<>\s*<button\s+className=\{cn\("agent-fab"/s
+  );
   assert.match(page, /className="alias-tip"/);
   assert.match(page, /className="active-design-switcher pixel-panel"/);
   assert.match(page, /className="selected-idea-wrap"/);
@@ -167,10 +197,39 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /\.selected-idea-option/);
   assert.match(css, /\.render-error/);
   assert.match(css, /\.muse-save-actions/);
+  assert.match(
+    css,
+    /\.muse-result\s*\{[^}]*width:\s*100%;[^}]*aspect-ratio:\s*4 \/ 3;/s,
+  );
   assert.match(css, /\.plan-advice-status/);
   assert.match(css, /\.plan-advice-error/);
+  assert.match(css, /\.material-upload-menu/);
+  assert.doesNotMatch(
+    css,
+    /\.dock-menu,\s*\.material-upload-menu\s*\{\s*position:\s*fixed;/,
+  );
+  assert.match(
+    css,
+    /\.material-upload-menu\s*\{[^}]*left: 50%;[^}]*transform: translateX\(-50%\);/s,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 620px\)[\s\S]*?\.material-upload-menu\s*\{\s*position: absolute;\s*top: calc\(100% \+ 6px\);\s*right: auto;\s*bottom: auto;\s*left: 0;\s*width: min\(330px, calc\(100vw - 42px\)\);\s*transform: none;/,
+  );
+  assert.match(css, /\.material-import-modal/);
+  assert.match(css, /\.material-file-actions/);
+  assert.match(css, /\.material-recording-icon/);
+  assert.match(css, /@keyframes material-recording-pulse/);
+  assert.match(css, /\.material-import-review/);
+  assert.match(css, /\.material-review-row/);
   assert.match(css, /\.handbook-generator/);
   assert.match(css, /\.handbook-sheet/);
+  assert.match(css, /\.handbook-page-image/);
+  assert.match(css, /\.handbook-pagination/);
+  assert.match(css, /@keyframes handbook-page-turn-next/);
+  assert.match(css, /@keyframes handbook-page-turn-previous/);
+  assert.match(css, /\.handbook-print-pages/);
+  assert.doesNotMatch(css, /\.handbook-sheet-content|\.handbook-preview-list/);
   assert.match(css, /\.handbook-candidate-description/);
   assert.match(
     css,
@@ -218,6 +277,21 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.doesNotMatch(renderRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
 
   assert.match(planAdviceRoute, /https:\/\/api\.openai\.com\/v1\/responses/);
+  assert.match(materialImportRoute, /https:\/\/api\.openai\.com\/v1\/responses/);
+  assert.match(
+    materialImportRoute,
+    /https:\/\/api\.openai\.com\/v1\/audio\/transcriptions/,
+  );
+  assert.match(materialImportRoute, /gpt-4o-mini-transcribe/);
+  assert.match(materialImportRoute, /gpt-5\.6-luna/);
+  assert.match(materialImportRoute, /type: "input_image"/);
+  assert.match(materialImportRoute, /strict: true/);
+  assert.match(materialImportRoute, /store: false/);
+  assert.match(materialImportRoute, /OPENAI_API_KEY/);
+  assert.doesNotMatch(
+    materialImportRoute,
+    /NEXT_PUBLIC_OPENAI|dangerouslyAllow/,
+  );
   assert.match(planAdviceRoute, /gpt-5\.6-luna/);
   assert.match(planAdviceRoute, /OPENAI_API_KEY/);
   assert.match(planAdviceRoute, /type: "json_schema"/);
@@ -232,15 +306,22 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(handbookRoute, /\/v1\/images\/edits/);
   assert.match(handbookRoute, /form\.append\(\s*"image\[\]"/);
   assert.match(handbookRoute, /buildHandbookPrompt/);
-  assert.match(handbookRoute, /Do not render any words, letters, numbers/);
+  assert.match(handbookRoute, /final, presentation-ready handbook page image/);
+  assert.match(handbookRoute, /COMPLETE SELECTED DESSERT CARD SOURCE/);
+  assert.match(handbookRoute, /pageCount/);
+  assert.match(handbookRoute, /images: pages\.map/);
+  assert.doesNotMatch(handbookRoute, /Do not render any words, letters, numbers/);
   assert.match(handbookRoute, /1024x1536/);
   assert.doesNotMatch(handbookRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
 
   assert.match(workspaceStorage, /window\.indexedDB/);
   assert.match(workspaceStorage, /document\.cookie/);
   assert.match(workspaceStorage, /dessert-valley-workspace/);
-  assert.match(workspaceStorage, /WORKSPACE_STORAGE_VERSION = 2/);
+  assert.match(workspaceStorage, /WORKSPACE_STORAGE_VERSION = 3/);
   assert.match(workspaceStorage, /Max-Age=31536000/);
   assert.match(workspaceStorage, /SameSite=Lax/);
   assert.match(workspaceStorage, /localStorage\.setItem\(FALLBACK_STORAGE_KEY/);
+  assert.match(handbookStorage, /pages: string\[\]/);
+  assert.match(handbookStorage, /typeof value\.src === "string"/);
+  assert.match(handbookStorage, /MAX_HANDBOOK_PAGE_COUNT = 4/);
 });
