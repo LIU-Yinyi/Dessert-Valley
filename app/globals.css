@@ -1173,7 +1173,8 @@ input[type="file"] {
 .material-upload-menu {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  right: auto;
+  left: 0;
   z-index: 32;
   width: 290px;
   padding: 8px;
@@ -3986,14 +3987,22 @@ button.empty-state {
     padding: 15px;
   }
 
-  .dock-menu,
-  .material-upload-menu {
+  .dock-menu {
     position: fixed;
     top: auto;
     right: 11px;
     bottom: 14px;
     left: 11px;
     width: auto;
+  }
+
+  .material-upload-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: auto;
+    bottom: auto;
+    left: 0;
+    width: min(330px, calc(100vw - 42px));
   }
 
   .material-upload-wrap {

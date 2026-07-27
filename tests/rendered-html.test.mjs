@@ -180,6 +180,14 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /\.plan-advice-status/);
   assert.match(css, /\.plan-advice-error/);
   assert.match(css, /\.material-upload-menu/);
+  assert.doesNotMatch(
+    css,
+    /\.dock-menu,\s*\.material-upload-menu\s*\{\s*position:\s*fixed;/,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 620px\)[\s\S]*?\.material-upload-menu\s*\{\s*position: absolute;\s*top: calc\(100% \+ 6px\);\s*right: auto;\s*bottom: auto;\s*left: 0;/,
+  );
   assert.match(css, /\.material-import-modal/);
   assert.match(css, /\.material-import-review/);
   assert.match(css, /\.material-review-row/);
