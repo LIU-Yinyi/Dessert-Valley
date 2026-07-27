@@ -87,6 +87,8 @@ type MaterialRow = {
   note: string;
 };
 
+type MaterialImportKind = "text" | "audio" | "image";
+
 type PlanStep = {
   id: number;
   title: string;
@@ -1620,6 +1622,601 @@ function StepEditor({
   );
 }
 
+function materialImportError(language: Language, code?: string) {
+  if (code === "request_too_large" || code === "invalid_request") {
+    return tr(
+      language,
+      "Choose valid recipe text, an image up to 8 MB, or audio up to 18 MB.",
+      "请选择有效的配方文字、8 MB 以内的图片或 18 MB 以内的音频。"
+    );
+  }
+  if (code === "not_configured") {
+    return tr(
+      language,
+      "AI material import is not configured yet.",
+      "AI 材料导入功能尚未配置。"
+    );
+  }
+  if (code === "rate_limit") {
+    return tr(
+      language,
+      "The material importer is busy. Please try again shortly.",
+      "材料导入助手正忙，请稍后重试。"
+    );
+  }
+  if (code === "empty_import") {
+    return tr(
+      language,
+      "No usable material rows were found. Try a clearer source.",
+      "没有识别到可用的材料行，请尝试更清晰的来源。"
+    );
+  }
+  if (code === "import_blocked") {
+    return tr(
+      language,
+      "This material source could not be processed.",
+      "无法处理此材料来源。"
+    );
+  }
+  return tr(
+    language,
+    "The material source could not be converted. Please retry.",
+    "材料来源暂时无法转换，请重试。"
+  );
+}
+
+function audioMimeType(filename: string, providedType: string) {
+  if (providedType) return providedType.toLowerCase();
+  const extension = filename.toLowerCase().split(".").pop();
+  const mimeByExtension: Record<string, string> = {
+    flac: "audio/flac",
+    m4a: "audio/m4a",
+    mp3: "audio/mpeg",
+    mp4: "audio/mp4",
+    mpeg: "audio/mpeg",
+    mpga: "audio/mpga",
+    oga: "audio/ogg",
+    ogg: "audio/ogg",
+    wav: "audio/wav",
+    webm: "audio/webm",
+  };
+  return extension ? mimeByExtension[extension] ?? "" : "";
+}
+
+function MaterialImportDialog({
+  kind,
+  idea,
+  language,
+  onClose,
+  onApply,
+}: {
+  kind: MaterialImportKind;
+  idea: IdeaCard;
+  language: Language;
+  onClose: () => void;
+  onApply: (rows: MaterialRow[]) => void;
+}) {
+  const [sourceText, setSourceText] = useState("");
+  const [asset, setAsset] = useState("");
+  const [filename, setFilename] = useState("");
+  const [mimeType, setMimeType] = useState("");
+  const [rows, setRows] = useState<MaterialRow[]>([]);
+  const [summary, setSummary] = useState("");
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState("");
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const dialogRef = useDialogFocus(onClose);
+  const kindMeta = {
+    text: {
+      icon: FileText,
+      label: tr(language, "Text", "文字"),
+      helper: tr(
+        language,
+        "Paste an ingredient list or recipe.",
+        "粘贴材料清单或配方。"
+      ),
+    },
+    audio: {
+      icon: AudioLines,
+      label: tr(language, "Audio", "音频"),
+      helper: tr(
+        language,
+        "Upload a spoken recipe or kitchen note.",
+        "上传口述配方或厨房语音记录。"
+      ),
+    },
+    image: {
+      icon: FileImage,
+      label: tr(language, "Image", "图片"),
+      helper: tr(
+        language,
+        "Upload a recipe photo, screenshot or label.",
+        "上传配方照片、截图或标签。"
+      ),
+    },
+  }[kind];
+  const KindIcon = kindMeta.icon;
+  const sourceReady = kind === "text" ? Boolean(sourceText.trim()) : Boolean(asset);
+
+  const resetExtraction = () => {
+    setRows([]);
+    setSummary("");
+    setError("");
+  };
+
+  const handleSourceFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    const imageTypes = new Set([
+      "image/gif",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ]);
+    const nextMimeType =
+      kind === "audio"
+        ? audioMimeType(file.name, file.type)
+        : file.type.toLowerCase();
+    const maximumBytes =
+      kind === "image" ? 8 * 1024 * 1024 : 18 * 1024 * 1024;
+    const validType =
+      kind === "image"
+        ? imageTypes.has(nextMimeType)
+        : nextMimeType.startsWith("audio/") ||
+          nextMimeType === "video/mp4" ||
+          nextMimeType === "video/webm";
+
+    if (!validType || file.size === 0 || file.size > maximumBytes) {
+      setError(
+        tr(
+          language,
+          kind === "image"
+            ? "Use a PNG, JPG, WEBP or still GIF up to 8 MB."
+            : "Use an MP3, M4A, WAV, OGG, FLAC, MP4 or WEBM audio file up to 18 MB.",
+          kind === "image"
+            ? "请使用 8 MB 以内的 PNG、JPG、WEBP 或静态 GIF。"
+            : "请使用 18 MB 以内的 MP3、M4A、WAV、OGG、FLAC、MP4 或 WEBM 音频。"
+        )
+      );
+      return;
+    }
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setAsset(dataUrl);
+      setFilename(file.name);
+      setMimeType(nextMimeType);
+      resetExtraction();
+    } catch {
+      setError(
+        tr(
+          language,
+          "The selected file could not be read.",
+          "无法读取所选文件。"
+        )
+      );
+    }
+  };
+
+  const extractMaterials = async () => {
+    if (!sourceReady || processing) return;
+    setProcessing(true);
+    setError("");
+    setRows([]);
+    setSummary("");
+
+    try {
+      const response = await fetch("/api/material-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          language,
+          product: {
+            title: idea.title,
+            description: idea.prompt,
+            tags: idea.tags,
+          },
+          source: {
+            kind,
+            content: kind === "text" ? sourceText.trim() : asset,
+            filename,
+            mimeType: kind === "text" ? "text/plain" : mimeType,
+          },
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            summary?: string;
+            materials?: Array<{
+              name?: string;
+              amount?: string;
+              unit?: string;
+              note?: string;
+            }>;
+            error?: { code?: string };
+          }
+        | null;
+      const importedRows: MaterialRow[] =
+        payload?.materials
+          ?.filter(
+            (material) =>
+              typeof material.name === "string" && material.name.trim()
+          )
+          .map((material) => ({
+            id: uid(),
+            name: material.name?.trim() ?? "",
+            amount:
+              typeof material.amount === "string" ? material.amount : "",
+            unit: typeof material.unit === "string" ? material.unit : "",
+            note: typeof material.note === "string" ? material.note : "",
+          })) ?? [];
+
+      if (!response.ok || !importedRows.length) {
+        throw new Error(payload?.error?.code || "import_failed");
+      }
+      setRows(importedRows);
+      setSummary(typeof payload?.summary === "string" ? payload.summary : "");
+    } catch (caughtError) {
+      const code =
+        caughtError instanceof Error ? caughtError.message : "import_failed";
+      setError(materialImportError(language, code));
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const updateRow = (id: number, patch: Partial<MaterialRow>) =>
+    setRows((current) =>
+      current.map((row) => (row.id === id ? { ...row, ...patch } : row))
+    );
+
+  const usableRows = rows.filter((row) => row.name.trim());
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section
+        ref={dialogRef}
+        className="pixel-modal material-import-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="material-import-title"
+        aria-busy={processing}
+      >
+        <header className="modal-header">
+          <div className="modal-icon">
+            <KindIcon size={18} />
+          </div>
+          <div>
+            <span className="micro-label">
+              {tr(language, "AI material import", "AI 材料导入")}
+            </span>
+            <h2 id="material-import-title">
+              {tr(
+                language,
+                `Import from ${kindMeta.label.toLowerCase()}`,
+                `从${kindMeta.label}导入`
+              )}
+            </h2>
+          </div>
+          <button
+            className="square-button"
+            type="button"
+            onClick={onClose}
+            aria-label={tr(language, "Close", "关闭")}
+          >
+            <X size={16} />
+          </button>
+        </header>
+
+        <div className="modal-body material-import-body">
+          <div className="material-import-intro">
+            <KindIcon size={18} aria-hidden="true" />
+            <span>
+              <strong>{kindMeta.label}</strong>
+              <small>{kindMeta.helper}</small>
+            </span>
+          </div>
+
+          {kind === "text" ? (
+            <label className="field material-source-text">
+              <span>{tr(language, "Recipe text", "配方文字")}</span>
+              <textarea
+                rows={8}
+                maxLength={16000}
+                value={sourceText}
+                onChange={(event) => {
+                  setSourceText(event.target.value);
+                  resetExtraction();
+                }}
+                placeholder={tr(
+                  language,
+                  "Example: Pear purée 120 g\nWhipping cream 80 g\nJasmine tea 4 g",
+                  "例如：梨果泥 120 克\n淡奶油 80 克\n茉莉花茶 4 克"
+                )}
+              />
+              <small className="field-help">
+                {tr(
+                  language,
+                  `${sourceText.length.toLocaleString()} / 16,000 characters`,
+                  `${sourceText.length.toLocaleString()} / 16,000 字符`
+                )}
+              </small>
+            </label>
+          ) : (
+            <div className="material-file-source">
+              <input
+                ref={fileRef}
+                type="file"
+                accept={
+                  kind === "image"
+                    ? ".png,.jpg,.jpeg,.webp,.gif,image/png,image/jpeg,image/webp,image/gif"
+                    : ".mp3,.m4a,.wav,.ogg,.flac,.mp4,.webm,audio/*"
+                }
+                onChange={handleSourceFile}
+              />
+              {kind === "image" && asset ? (
+                <div className="material-file-preview image">
+                  <WorkspaceImage
+                    src={asset}
+                    alt={tr(language, "Recipe source preview", "配方来源预览")}
+                  />
+                </div>
+              ) : kind === "audio" && asset ? (
+                <div className="material-file-preview audio">
+                  <AudioLines size={26} aria-hidden="true" />
+                  <audio
+                    controls
+                    src={asset}
+                    aria-label={tr(
+                      language,
+                      "Uploaded recipe audio",
+                      "已上传的配方音频"
+                    )}
+                  />
+                </div>
+              ) : (
+                <div className="material-file-empty">
+                  {kind === "image" ? (
+                    <ImagePlus size={28} aria-hidden="true" />
+                  ) : (
+                    <Volume2 size={28} aria-hidden="true" />
+                  )}
+                  <strong>
+                    {tr(
+                      language,
+                      kind === "image"
+                        ? "No recipe image selected"
+                        : "No recipe audio selected",
+                      kind === "image"
+                        ? "尚未选择配方图片"
+                        : "尚未选择配方音频"
+                    )}
+                  </strong>
+                </div>
+              )}
+              <div className="material-file-meta">
+                <span>
+                  <strong>
+                    {filename ||
+                      tr(language, "Choose a source file", "选择来源文件")}
+                  </strong>
+                  <small>
+                    {tr(
+                      language,
+                      kind === "image"
+                        ? "PNG, JPG, WEBP or still GIF · 8 MB max"
+                        : "MP3, M4A, WAV, OGG, FLAC, MP4 or WEBM · 18 MB max",
+                      kind === "image"
+                        ? "PNG、JPG、WEBP 或静态 GIF · 最大 8 MB"
+                        : "MP3、M4A、WAV、OGG、FLAC、MP4 或 WEBM · 最大 18 MB"
+                    )}
+                  </small>
+                </span>
+                <button
+                  className="button ghost"
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Upload size={15} />
+                  {filename
+                    ? tr(language, "Replace", "更换")
+                    : tr(language, "Choose file", "选择文件")}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <p className="material-import-privacy">
+            <Layers3 size={14} aria-hidden="true" />
+            {tr(
+              language,
+              "The source is sent to AI for this import only. Only rows you confirm are saved in your local workspace.",
+              "来源仅在本次导入时发送给 AI；只有确认后的材料行会保存到本地工作区。"
+            )}
+          </p>
+
+          {processing && (
+            <div className="material-import-status" role="status" aria-live="polite">
+              <LoaderCircle className="spin" size={17} />
+              <span>
+                <strong>
+                  {tr(language, "Reading the material source…", "正在读取材料来源……")}
+                </strong>
+                <small>
+                  {tr(
+                    language,
+                    "Muse is separating ingredients, amounts, units and notes.",
+                    "缪斯正在拆分材料、用量、单位与备注。"
+                  )}
+                </small>
+              </span>
+            </div>
+          )}
+
+          {error && !processing && (
+            <div className="render-error material-import-error" role="alert">
+              <Bot size={15} />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {rows.length > 0 && !processing && (
+            <section
+              className="material-import-review"
+              aria-labelledby="material-review-title"
+            >
+              <header>
+                <span>
+                  <strong id="material-review-title">
+                    {tr(language, "Review extracted rows", "检查识别结果")}
+                  </strong>
+                  <small>
+                    {summary ||
+                      tr(
+                        language,
+                        "Edit anything uncertain before adding it.",
+                        "添加前可修改任何不确定的内容。"
+                      )}
+                  </small>
+                </span>
+                <span className="material-count">
+                  {usableRows.length} {tr(language, "rows", "行")}
+                </span>
+              </header>
+              <div className="material-review-headings" aria-hidden="true">
+                <span>{tr(language, "Material", "材料")}</span>
+                <span>{tr(language, "Amount", "用量")}</span>
+                <span>{tr(language, "Unit", "单位")}</span>
+                <span>{tr(language, "Note", "备注")}</span>
+                <span />
+              </div>
+              <div className="material-review-rows">
+                {rows.map((row, index) => (
+                  <article className="material-review-row" key={row.id}>
+                    <label>
+                      <span>{tr(language, "Material", "材料")}</span>
+                      <input
+                        value={row.name}
+                        onChange={(event) =>
+                          updateRow(row.id, { name: event.target.value })
+                        }
+                        aria-label={tr(
+                          language,
+                          `Material ${index + 1} name`,
+                          `第 ${index + 1} 项材料名称`
+                        )}
+                      />
+                    </label>
+                    <label>
+                      <span>{tr(language, "Amount", "用量")}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={row.amount}
+                        onChange={(event) =>
+                          updateRow(row.id, { amount: event.target.value })
+                        }
+                        aria-label={tr(
+                          language,
+                          `${row.name || `Material ${index + 1}`} amount`,
+                          `${row.name || `第 ${index + 1} 项材料`}用量`
+                        )}
+                      />
+                    </label>
+                    <label>
+                      <span>{tr(language, "Unit", "单位")}</span>
+                      <input
+                        value={row.unit}
+                        onChange={(event) =>
+                          updateRow(row.id, { unit: event.target.value })
+                        }
+                        aria-label={tr(
+                          language,
+                          `${row.name || `Material ${index + 1}`} unit`,
+                          `${row.name || `第 ${index + 1} 项材料`}单位`
+                        )}
+                      />
+                    </label>
+                    <label>
+                      <span>{tr(language, "Note", "备注")}</span>
+                      <input
+                        value={row.note}
+                        onChange={(event) =>
+                          updateRow(row.id, { note: event.target.value })
+                        }
+                        aria-label={tr(
+                          language,
+                          `${row.name || `Material ${index + 1}`} note`,
+                          `${row.name || `第 ${index + 1} 项材料`}备注`
+                        )}
+                      />
+                    </label>
+                    <button
+                      className="square-button mini danger"
+                      type="button"
+                      onClick={() =>
+                        setRows((current) =>
+                          current.filter((item) => item.id !== row.id)
+                        )
+                      }
+                      aria-label={tr(
+                        language,
+                        `Remove ${row.name || `material ${index + 1}`}`,
+                        `删除 ${row.name || `第 ${index + 1} 项材料`}`
+                      )}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+
+        <footer className="modal-footer material-import-footer">
+          <button className="button ghost" type="button" onClick={onClose}>
+            {tr(language, "Cancel", "取消")}
+          </button>
+          <button
+            className="button secondary"
+            type="button"
+            onClick={extractMaterials}
+            disabled={!sourceReady || processing}
+          >
+            {processing ? (
+              <LoaderCircle className="spin" size={15} />
+            ) : (
+              <WandSparkles size={15} />
+            )}
+            {rows.length
+              ? tr(language, "Scan again", "重新识别")
+              : tr(language, "Extract with AI", "使用 AI 识别")}
+          </button>
+          {rows.length > 0 && (
+            <button
+              className="button primary"
+              type="button"
+              disabled={!usableRows.length || processing}
+              onClick={() => onApply(usableRows)}
+            >
+              <Check size={15} />
+              {tr(
+                language,
+                `Add ${usableRows.length} to table`,
+                `添加 ${usableRows.length} 行到表格`
+              )}
+            </button>
+          )}
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 function parseIdeaTags(value: string) {
   return Array.from(
     new Set(
@@ -1862,6 +2459,9 @@ export default function Home() {
         seedIdeas.map((idea) => [idea.id, emptyProductDraft()])
       )
   );
+  const [materialUploadMenuOpen, setMaterialUploadMenuOpen] = useState(false);
+  const [materialImportKind, setMaterialImportKind] =
+    useState<MaterialImportKind | null>(null);
   const [stepEditor, setStepEditor] = useState<PlanStep | "new" | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentInput, setAgentInput] = useState("");
@@ -1884,6 +2484,7 @@ export default function Home() {
   const [toast, setToast] = useState("");
   const importRef = useRef<HTMLInputElement | null>(null);
   const ideaSelectorRef = useRef<HTMLDivElement | null>(null);
+  const materialUploadRef = useRef<HTMLDivElement | null>(null);
   const handbookReferenceRef = useRef<HTMLInputElement | null>(null);
   const workspaceSaveWarningShown = useRef(false);
 
@@ -2164,9 +2765,18 @@ export default function Home() {
       ) {
         setIdeaMenuOpen(false);
       }
+      if (
+        materialUploadRef.current &&
+        !materialUploadRef.current.contains(event.target as Node)
+      ) {
+        setMaterialUploadMenuOpen(false);
+      }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIdeaMenuOpen(false);
+      if (event.key === "Escape") {
+        setIdeaMenuOpen(false);
+        setMaterialUploadMenuOpen(false);
+      }
     };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
@@ -2180,6 +2790,7 @@ export default function Home() {
 
   const openStage = (next: Stage) => {
     setIdeaMenuOpen(false);
+    setMaterialUploadMenuOpen(false);
     setStage(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -2568,6 +3179,18 @@ export default function Home() {
       ...current,
       { id: uid(), name: "", amount: "", unit: "g", note: "" },
     ]);
+
+  const addImportedMaterials = (rows: MaterialRow[]) => {
+    setActiveMaterials((current) => [...current, ...rows]);
+    setMaterialImportKind(null);
+    notify(
+      tr(
+        language,
+        `${rows.length} AI-extracted material rows added`,
+        `已添加 ${rows.length} 行 AI 识别材料`
+      )
+    );
+  };
 
   const updateMaterial = (id: number, patch: Partial<MaterialRow>) =>
     setActiveMaterials((current) =>
@@ -4065,9 +4688,105 @@ export default function Home() {
                         )}
                   </p>
                 </div>
-                <button className="button secondary" type="button" onClick={addMaterial}>
-                  <Plus size={15} /> {tr(language, "Add material", "添加材料")}
-                </button>
+                <div className="section-actions">
+                  <div className="material-upload-wrap" ref={materialUploadRef}>
+                    <button
+                      className="button ghost"
+                      type="button"
+                      aria-haspopup="menu"
+                      aria-expanded={materialUploadMenuOpen}
+                      aria-controls="material-upload-menu"
+                      onClick={() =>
+                        setMaterialUploadMenuOpen((current) => !current)
+                      }
+                    >
+                      <Upload size={15} />
+                      {tr(language, "Upload", "上传")}
+                      <ChevronDown size={13} aria-hidden="true" />
+                    </button>
+                    {materialUploadMenuOpen && (
+                      <div
+                        className="material-upload-menu"
+                        id="material-upload-menu"
+                        role="menu"
+                        aria-label={tr(
+                          language,
+                          "Choose material source",
+                          "选择材料来源"
+                        )}
+                      >
+                        {(
+                          [
+                            {
+                              kind: "text" as const,
+                              icon: FileText,
+                              label: tr(language, "Text", "文字"),
+                              helper: tr(
+                                language,
+                                "Paste a recipe or ingredient list",
+                                "粘贴配方或材料清单"
+                              ),
+                            },
+                            {
+                              kind: "audio" as const,
+                              icon: AudioLines,
+                              label: tr(language, "Audio", "音频"),
+                              helper: tr(
+                                language,
+                                "Upload a spoken kitchen note",
+                                "上传厨房语音记录"
+                              ),
+                            },
+                            {
+                              kind: "image" as const,
+                              icon: FileImage,
+                              label: tr(language, "Image", "图片"),
+                              helper: tr(
+                                language,
+                                "Upload a recipe photo or label",
+                                "上传配方照片或标签"
+                              ),
+                            },
+                          ] satisfies Array<{
+                            kind: MaterialImportKind;
+                            icon: typeof FileText;
+                            label: string;
+                            helper: string;
+                          }>
+                        ).map((option) => {
+                          const OptionIcon = option.icon;
+                          return (
+                            <button
+                              type="button"
+                              role="menuitem"
+                              key={option.kind}
+                              onClick={() => {
+                                setMaterialUploadMenuOpen(false);
+                                setMaterialImportKind(option.kind);
+                              }}
+                            >
+                              <span>
+                                <OptionIcon size={16} aria-hidden="true" />
+                              </span>
+                              <span>
+                                <strong>{option.label}</strong>
+                                <small>{option.helper}</small>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    className="button secondary"
+                    type="button"
+                    onClick={addMaterial}
+                  >
+                    <Plus size={15} />
+                    {tr(language, "Add material", "添加材料")}
+                  </button>
+                </div>
               </div>
               {materials.length === 0 ? (
                 <button className="empty-state compact" type="button" onClick={addMaterial}>
@@ -5222,6 +5941,16 @@ export default function Home() {
           language={language}
           onClose={() => setReferenceEditor(null)}
           onSave={saveReference}
+        />
+      )}
+      {materialImportKind && (
+        <MaterialImportDialog
+          key={`${selectedIdea.id}-${materialImportKind}`}
+          kind={materialImportKind}
+          idea={selectedIdea}
+          language={language}
+          onClose={() => setMaterialImportKind(null)}
+          onApply={addImportedMaterials}
         />
       )}
       {stepEditor && (

@@ -46,6 +46,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
     packageJson,
     renderRoute,
     planAdviceRoute,
+    materialImportRoute,
     handbookRoute,
     workspaceStorage,
   ] = await Promise.all([
@@ -55,6 +56,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/render/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/plan-advice/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/material-import/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/handbook-render/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/workspace-storage.ts", import.meta.url), "utf8"),
   ]);
@@ -90,6 +92,14 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /fetch\("\/api\/plan-advice"/);
   assert.match(page, /material-aware steps/);
   assert.match(page, /planAdviceErrors/);
+  assert.match(page, /fetch\("\/api\/material-import"/);
+  assert.match(page, /function MaterialImportDialog/);
+  assert.match(page, /className="material-upload-menu"/);
+  assert.match(page, /"Text", "文字"/);
+  assert.match(page, /"Audio", "音频"/);
+  assert.match(page, /"Image", "图片"/);
+  assert.match(page, /Only rows you confirm are saved/);
+  assert.match(page, /setActiveMaterials\(\(current\) => \[\.\.\.current, \.\.\.rows\]\)/);
   assert.match(page, /fetch\("\/api\/handbook-render"/);
   assert.match(page, /handbookStylePrompt/);
   assert.match(page, /handbookReferenceImage/);
@@ -169,6 +179,10 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /\.muse-save-actions/);
   assert.match(css, /\.plan-advice-status/);
   assert.match(css, /\.plan-advice-error/);
+  assert.match(css, /\.material-upload-menu/);
+  assert.match(css, /\.material-import-modal/);
+  assert.match(css, /\.material-import-review/);
+  assert.match(css, /\.material-review-row/);
   assert.match(css, /\.handbook-generator/);
   assert.match(css, /\.handbook-sheet/);
   assert.match(css, /\.handbook-candidate-description/);
@@ -218,6 +232,21 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.doesNotMatch(renderRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
 
   assert.match(planAdviceRoute, /https:\/\/api\.openai\.com\/v1\/responses/);
+  assert.match(materialImportRoute, /https:\/\/api\.openai\.com\/v1\/responses/);
+  assert.match(
+    materialImportRoute,
+    /https:\/\/api\.openai\.com\/v1\/audio\/transcriptions/,
+  );
+  assert.match(materialImportRoute, /gpt-4o-mini-transcribe/);
+  assert.match(materialImportRoute, /gpt-5\.6-luna/);
+  assert.match(materialImportRoute, /type: "input_image"/);
+  assert.match(materialImportRoute, /strict: true/);
+  assert.match(materialImportRoute, /store: false/);
+  assert.match(materialImportRoute, /OPENAI_API_KEY/);
+  assert.doesNotMatch(
+    materialImportRoute,
+    /NEXT_PUBLIC_OPENAI|dangerouslyAllow/,
+  );
   assert.match(planAdviceRoute, /gpt-5\.6-luna/);
   assert.match(planAdviceRoute, /OPENAI_API_KEY/);
   assert.match(planAdviceRoute, /type: "json_schema"/);
