@@ -123,6 +123,12 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.doesNotMatch(page, /className="avatar"/);
   assert.match(page, /Empty dessert sketch canvas/);
   assert.match(page, /className="agent-window"/);
+  assert.match(page, /data-global-assistant="true"/);
+  assert.match(page, /aria-controls="pastry-agent-window"/);
+  assert.doesNotMatch(
+    page,
+    /stage === "product" && \(\s*<>\s*<button\s+className=\{cn\("agent-fab"/s
+  );
   assert.match(page, /className="alias-tip"/);
   assert.match(page, /className="active-design-switcher pixel-panel"/);
   assert.match(page, /className="selected-idea-wrap"/);

@@ -3062,6 +3062,7 @@ export default function Home() {
       if (event.key === "Escape") {
         setIdeaMenuOpen(false);
         setMaterialUploadMenuOpen(false);
+        setAgentOpen(false);
       }
     };
     document.addEventListener("pointerdown", handlePointerDown);
@@ -6132,73 +6133,81 @@ export default function Home() {
         </button>
       </footer>
 
-      {stage === "product" && (
-        <>
-          <button
-            className={cn("agent-fab", agentOpen && "open")}
-            type="button"
-            onClick={() => setAgentOpen((current) => !current)}
-            aria-label={tr(language, "Open pastry agent", "打开甜点助手")}
-          >
-            {agentOpen ? <X size={20} /> : <Bot size={21} />}
-            {!agentOpen && <span>{tr(language, "Ask Muse", "问问缪斯")}</span>}
-          </button>
-          {agentOpen && (
-            <aside className="agent-window">
-              <header>
-                <span className="panel-icon muse"><Bot size={17} /></span>
-                <span>
-                  <strong>{tr(language, "Pastry agent", "甜点助手")}</strong>
-                  <small>{tr(language, "floating helper", "浮动助手")}</small>
-                </span>
-                <button
-                  className="square-button mini"
-                  type="button"
-                  onClick={() => setAgentOpen(false)}
-                  aria-label={tr(language, "Close chat", "关闭对话")}
-                >
-                  <X size={13} />
-                </button>
-              </header>
-              <div className="agent-messages">
-                {agentMessages.map((message, index) => (
-                  <p className={cn(index % 2 === 1 && "user")} key={`${message}-${index}`}>{message}</p>
-                ))}
-              </div>
-              {agentAudioName && <div className="audio-attached"><AudioLines size={13} /> {agentAudioName}</div>}
-              <div className="agent-composer">
-                <label
-                  className="square-button"
-                  data-tip={tr(language, "Attach audio", "添加语音")}
-                >
-                  <Mic size={15} />
-                  <input
-                    type="file"
-                    accept="audio/*"
-                    onChange={(event) => {
-                      setAgentAudioName(event.target.files?.[0]?.name ?? "");
-                      event.target.value = "";
-                    }}
-                  />
-                </label>
-                <input
-                  value={agentInput}
-                  onChange={(event) => setAgentInput(event.target.value)}
-                  onKeyDown={(event) => event.key === "Enter" && sendAgentMessage()}
-                  placeholder={tr(language, "Ask about this product…", "询问这个产品…")}
-                />
-                <button
-                  className="square-button send"
-                  type="button"
-                  onClick={sendAgentMessage}
-                  aria-label={tr(language, "Send", "发送")}
-                >
-                  <Send size={15} />
-                </button>
-              </div>
-            </aside>
-          )}
-        </>
+      <button
+        className={cn("agent-fab", agentOpen && "open")}
+        type="button"
+        onClick={() => setAgentOpen((current) => !current)}
+        aria-controls="pastry-agent-window"
+        aria-expanded={agentOpen}
+        aria-label={tr(
+          language,
+          agentOpen ? "Close pastry agent" : "Open pastry agent",
+          agentOpen ? "关闭甜点助手" : "打开甜点助手"
+        )}
+        data-global-assistant="true"
+      >
+        {agentOpen ? <X size={20} /> : <Bot size={21} />}
+        {!agentOpen && <span>{tr(language, "Ask Muse", "问问缪斯")}</span>}
+      </button>
+      {agentOpen && (
+        <aside
+          id="pastry-agent-window"
+          className="agent-window"
+          role="dialog"
+          aria-label={tr(language, "Pastry agent", "甜点助手")}
+        >
+          <header>
+            <span className="panel-icon muse"><Bot size={17} /></span>
+            <span>
+              <strong>{tr(language, "Pastry agent", "甜点助手")}</strong>
+              <small>{tr(language, "floating helper", "浮动助手")}</small>
+            </span>
+            <button
+              className="square-button mini"
+              type="button"
+              onClick={() => setAgentOpen(false)}
+              aria-label={tr(language, "Close chat", "关闭对话")}
+            >
+              <X size={13} />
+            </button>
+          </header>
+          <div className="agent-messages">
+            {agentMessages.map((message, index) => (
+              <p className={cn(index % 2 === 1 && "user")} key={`${message}-${index}`}>{message}</p>
+            ))}
+          </div>
+          {agentAudioName && <div className="audio-attached"><AudioLines size={13} /> {agentAudioName}</div>}
+          <div className="agent-composer">
+            <label
+              className="square-button"
+              data-tip={tr(language, "Attach audio", "添加语音")}
+            >
+              <Mic size={15} />
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={(event) => {
+                  setAgentAudioName(event.target.files?.[0]?.name ?? "");
+                  event.target.value = "";
+                }}
+              />
+            </label>
+            <input
+              value={agentInput}
+              onChange={(event) => setAgentInput(event.target.value)}
+              onKeyDown={(event) => event.key === "Enter" && sendAgentMessage()}
+              placeholder={tr(language, "Ask about this dessert…", "询问这个甜点…")}
+            />
+            <button
+              className="square-button send"
+              type="button"
+              onClick={sendAgentMessage}
+              aria-label={tr(language, "Send", "发送")}
+            >
+              <Send size={15} />
+            </button>
+          </div>
+        </aside>
       )}
 
       {ideaEditor && (
