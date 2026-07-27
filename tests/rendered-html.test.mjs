@@ -186,7 +186,11 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   );
   assert.match(
     css,
-    /@media \(max-width: 620px\)[\s\S]*?\.material-upload-menu\s*\{\s*position: absolute;\s*top: calc\(100% \+ 6px\);\s*right: auto;\s*bottom: auto;\s*left: 0;/,
+    /\.material-upload-menu\s*\{[^}]*left: 50%;[^}]*transform: translateX\(-50%\);/s,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 620px\)[\s\S]*?\.material-upload-menu\s*\{\s*position: absolute;\s*top: calc\(100% \+ 6px\);\s*right: auto;\s*bottom: auto;\s*left: 0;\s*width: min\(330px, calc\(100vw - 42px\)\);\s*transform: none;/,
   );
   assert.match(css, /\.material-import-modal/);
   assert.match(css, /\.material-import-review/);
