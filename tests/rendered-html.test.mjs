@@ -187,6 +187,10 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /\.selected-idea-option/);
   assert.match(css, /\.render-error/);
   assert.match(css, /\.muse-save-actions/);
+  assert.match(
+    css,
+    /\.muse-result\s*\{[^}]*width:\s*100%;[^}]*aspect-ratio:\s*4 \/ 3;/s,
+  );
   assert.match(css, /\.plan-advice-status/);
   assert.match(css, /\.plan-advice-error/);
   assert.match(css, /\.material-upload-menu/);
