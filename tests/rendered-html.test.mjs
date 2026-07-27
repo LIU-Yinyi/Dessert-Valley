@@ -94,6 +94,10 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /planAdviceErrors/);
   assert.match(page, /fetch\("\/api\/material-import"/);
   assert.match(page, /function MaterialImportDialog/);
+  assert.match(page, /navigator\.mediaDevices\.getUserMedia/);
+  assert.match(page, /new MediaRecorder/);
+  assert.match(page, /"Record audio", "录制音频"/);
+  assert.match(page, /"Stop recording", "停止录音"/);
   assert.match(page, /className="material-upload-menu"/);
   assert.match(page, /"Text", "文字"/);
   assert.match(page, /"Audio", "音频"/);
@@ -193,6 +197,9 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
     /@media \(max-width: 620px\)[\s\S]*?\.material-upload-menu\s*\{\s*position: absolute;\s*top: calc\(100% \+ 6px\);\s*right: auto;\s*bottom: auto;\s*left: 0;\s*width: min\(330px, calc\(100vw - 42px\)\);\s*transform: none;/,
   );
   assert.match(css, /\.material-import-modal/);
+  assert.match(css, /\.material-file-actions/);
+  assert.match(css, /\.material-recording-icon/);
+  assert.match(css, /@keyframes material-recording-pulse/);
   assert.match(css, /\.material-import-review/);
   assert.match(css, /\.material-review-row/);
   assert.match(css, /\.handbook-generator/);

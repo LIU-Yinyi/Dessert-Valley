@@ -1885,6 +1885,61 @@ input[type="file"] {
   width: min(100%, 520px);
 }
 
+.material-file-preview.audio.recording {
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-content: center;
+  justify-content: center;
+  color: var(--berry);
+}
+
+.material-recording-icon {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  color: var(--paper-hi);
+  background: var(--berry);
+  border: 3px solid var(--soil-deep);
+  box-shadow: var(--shadow-small);
+  animation: material-recording-pulse 1.4s steps(2, end) infinite;
+}
+
+@keyframes material-recording-pulse {
+  50% {
+    box-shadow:
+      0 0 0 5px rgba(168, 78, 67, .18),
+      var(--shadow-small);
+  }
+}
+
+.material-recording-copy {
+  min-width: 0;
+}
+
+.material-recording-copy strong,
+.material-recording-copy small {
+  display: block;
+}
+
+.material-recording-copy strong {
+  color: var(--berry);
+  font-family: var(--font-display);
+  font-size: 12px;
+}
+
+.material-recording-copy small {
+  margin-top: 5px;
+  color: var(--ink-soft);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.material-recording-copy time {
+  font-family: var(--font-display);
+  font-weight: 800;
+}
+
 .material-file-empty {
   align-content: center;
   gap: 8px;
@@ -1925,6 +1980,17 @@ input[type="file"] {
   margin-top: 3px;
   color: var(--muted);
   font-size: 9px;
+}
+
+.material-file-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.material-file-actions .button {
+  min-width: 130px;
 }
 
 .material-import-privacy {
@@ -4055,6 +4121,17 @@ button.empty-state {
 
   .material-file-meta .button {
     width: 100%;
+  }
+
+  .material-file-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .material-file-actions .button {
+    min-width: 0;
+    padding-inline: 7px;
   }
 
   .material-review-headings {

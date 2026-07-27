@@ -27,6 +27,7 @@ import {
   Redo2,
   Send,
   Sparkles,
+  Square,
   Sprout,
   Trash2,
   Undo2,
@@ -1683,6 +1684,42 @@ function audioMimeType(filename: string, providedType: string) {
   return extension ? mimeByExtension[extension] ?? "" : "";
 }
 
+function preferredRecordingMimeType() {
+  if (
+    typeof MediaRecorder === "undefined" ||
+    typeof MediaRecorder.isTypeSupported !== "function"
+  ) {
+    return "";
+  }
+  return (
+    [
+      "audio/webm;codecs=opus",
+      "audio/mp4",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+    ].find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? ""
+  );
+}
+
+function baseRecordingMimeType(value: string) {
+  return value.toLowerCase().split(";")[0]?.trim() || "audio/webm";
+}
+
+function recordingFilename(mimeType: string) {
+  const extension = mimeType.includes("mp4")
+    ? "m4a"
+    : mimeType.includes("ogg")
+      ? "ogg"
+      : "webm";
+  return `recipe-recording-${Date.now()}.${extension}`;
+}
+
+function formatRecordingTime(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 function MaterialImportDialog({
   kind,
   idea,
@@ -1704,8 +1741,54 @@ function MaterialImportDialog({
   const [summary, setSummary] = useState("");
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [sourceMethod, setSourceMethod] = useState<
+    "recording" | "upload" | null
+  >(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingStartedAtRef = useRef(0);
+  const recordingFailedRef = useRef(false);
+  const dialogMountedRef = useRef(true);
   const dialogRef = useDialogFocus(onClose);
+
+  useEffect(() => {
+    dialogMountedRef.current = true;
+    return () => {
+      dialogMountedRef.current = false;
+      recordingFailedRef.current = true;
+      const recorder = recorderRef.current;
+      if (recorder) {
+        recorder.ondataavailable = null;
+        recorder.onstop = null;
+        recorder.onerror = null;
+        if (recorder.state !== "inactive") recorder.stop();
+      }
+      recordingStreamRef.current
+        ?.getTracks()
+        .forEach((track) => track.stop());
+      recordingStreamRef.current = null;
+      recorderRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!recording) return;
+    const updateElapsedTime = () =>
+      setRecordingSeconds(
+        Math.max(
+          0,
+          Math.floor((Date.now() - recordingStartedAtRef.current) / 1000)
+        )
+      );
+    updateElapsedTime();
+    const timer = window.setInterval(updateElapsedTime, 250);
+    return () => window.clearInterval(timer);
+  }, [recording]);
+
   const kindMeta = {
     text: {
       icon: FileText,
@@ -1721,8 +1804,8 @@ function MaterialImportDialog({
       label: tr(language, "Audio", "音频"),
       helper: tr(
         language,
-        "Upload a spoken recipe or kitchen note.",
-        "上传口述配方或厨房语音记录。"
+        "Record or upload a spoken recipe or kitchen note.",
+        "录制或上传口述配方与厨房语音记录。"
       ),
     },
     image: {
@@ -1744,11 +1827,10 @@ function MaterialImportDialog({
     setError("");
   };
 
-  const handleSourceFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-
+  const loadSourceFile = async (
+    file: File,
+    method: "recording" | "upload"
+  ) => {
     const imageTypes = new Set([
       "image/gif",
       "image/jpeg",
@@ -1788,6 +1870,7 @@ function MaterialImportDialog({
       setAsset(dataUrl);
       setFilename(file.name);
       setMimeType(nextMimeType);
+      setSourceMethod(method);
       resetExtraction();
     } catch {
       setError(
@@ -1800,8 +1883,133 @@ function MaterialImportDialog({
     }
   };
 
+  const handleSourceFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    await loadSourceFile(file, "upload");
+  };
+
+  const stopRecording = () => {
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+  };
+
+  const startRecording = async () => {
+    if (recording || processing) return;
+    if (
+      typeof MediaRecorder === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      setError(
+        tr(
+          language,
+          "Audio recording is not supported in this browser. Choose an audio file instead.",
+          "此浏览器不支持音频录制，请改为选择音频文件。"
+        )
+      );
+      return;
+    }
+
+    setError("");
+    setRows([]);
+    setSummary("");
+    recordingFailedRef.current = false;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+      if (!dialogMountedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      const requestedMimeType = preferredRecordingMimeType();
+      const recorder = requestedMimeType
+        ? new MediaRecorder(stream, { mimeType: requestedMimeType })
+        : new MediaRecorder(stream);
+      recordingStreamRef.current = stream;
+      recorderRef.current = recorder;
+      recordingChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        recordingFailedRef.current = true;
+        stream.getTracks().forEach((track) => track.stop());
+        if (!dialogMountedRef.current) return;
+        setRecording(false);
+        setError(
+          tr(
+            language,
+            "Recording stopped unexpectedly. Please try again or choose an audio file.",
+            "录音意外停止，请重试或选择音频文件。"
+          )
+        );
+      };
+      recorder.onstop = async () => {
+        const recordedMimeType = baseRecordingMimeType(
+          recorder.mimeType || requestedMimeType
+        );
+        const blob = new Blob(recordingChunksRef.current, {
+          type: recordedMimeType,
+        });
+        stream.getTracks().forEach((track) => track.stop());
+        if (recordingStreamRef.current === stream) {
+          recordingStreamRef.current = null;
+        }
+        if (recorderRef.current === recorder) recorderRef.current = null;
+        if (!dialogMountedRef.current) return;
+        setRecording(false);
+        if (recordingFailedRef.current) return;
+        if (blob.size === 0) {
+          setError(
+            tr(
+              language,
+              "No audio was captured. Check your microphone and record again.",
+              "没有录制到音频，请检查麦克风后重试。"
+            )
+          );
+          return;
+        }
+        await loadSourceFile(
+          new File([blob], recordingFilename(recordedMimeType), {
+            type: recordedMimeType,
+          }),
+          "recording"
+        );
+      };
+
+      recordingStartedAtRef.current = Date.now();
+      setRecordingSeconds(0);
+      recorder.start(250);
+      setRecording(true);
+    } catch {
+      recordingStreamRef.current
+        ?.getTracks()
+        .forEach((track) => track.stop());
+      recordingStreamRef.current = null;
+      recorderRef.current = null;
+      if (!dialogMountedRef.current) return;
+      setRecording(false);
+      setError(
+        tr(
+          language,
+          "Microphone access was not granted. Allow access or choose an audio file instead.",
+          "未获得麦克风权限，请允许访问或改为选择音频文件。"
+        )
+      );
+    }
+  };
+
   const extractMaterials = async () => {
-    if (!sourceReady || processing) return;
+    if (!sourceReady || processing || recording) return;
     setProcessing(true);
     setError("");
     setRows([]);
@@ -1956,7 +2164,31 @@ function MaterialImportDialog({
                 }
                 onChange={handleSourceFile}
               />
-              {kind === "image" && asset ? (
+              {kind === "audio" && recording ? (
+                <div className="material-file-preview audio recording">
+                  <span className="material-recording-icon" aria-hidden="true">
+                    <Mic size={24} />
+                  </span>
+                  <span className="material-recording-copy">
+                    <strong role="status">
+                      {tr(
+                        language,
+                        "Recording recipe audio",
+                        "正在录制配方音频"
+                      )}
+                    </strong>
+                    <small>
+                      <time>{formatRecordingTime(recordingSeconds)}</time>
+                      <span aria-hidden="true"> · </span>
+                      {tr(
+                        language,
+                        "Speak ingredients, amounts and preparation notes.",
+                        "请口述材料、用量与处理说明。"
+                      )}
+                    </small>
+                  </span>
+                </div>
+              ) : kind === "image" && asset ? (
                 <div className="material-file-preview image">
                   <WorkspaceImage
                     src={asset}
@@ -1971,8 +2203,12 @@ function MaterialImportDialog({
                     src={asset}
                     aria-label={tr(
                       language,
-                      "Uploaded recipe audio",
-                      "已上传的配方音频"
+                      sourceMethod === "recording"
+                        ? "Recorded recipe audio"
+                        : "Uploaded recipe audio",
+                      sourceMethod === "recording"
+                        ? "已录制的配方音频"
+                        : "已上传的配方音频"
                     )}
                   />
                 </div>
@@ -1999,31 +2235,81 @@ function MaterialImportDialog({
               <div className="material-file-meta">
                 <span>
                   <strong>
-                    {filename ||
-                      tr(language, "Choose a source file", "选择来源文件")}
+                    {recording
+                      ? tr(
+                          language,
+                          `Recording · ${formatRecordingTime(recordingSeconds)}`,
+                          `正在录音 · ${formatRecordingTime(recordingSeconds)}`
+                        )
+                      : filename ||
+                        tr(language, "Choose a source file", "选择来源文件")}
                   </strong>
                   <small>
                     {tr(
                       language,
-                      kind === "image"
-                        ? "PNG, JPG, WEBP or still GIF · 8 MB max"
-                        : "MP3, M4A, WAV, OGG, FLAC, MP4 or WEBM · 18 MB max",
-                      kind === "image"
-                        ? "PNG、JPG、WEBP 或静态 GIF · 最大 8 MB"
-                        : "MP3、M4A、WAV、OGG、FLAC、MP4 或 WEBM · 最大 18 MB"
+                      recording
+                        ? "Stop when your spoken recipe is complete."
+                        : sourceMethod === "recording"
+                          ? "Recording ready for AI extraction."
+                          : kind === "image"
+                            ? "PNG, JPG, WEBP or still GIF · 8 MB max"
+                            : "MP3, M4A, WAV, OGG, FLAC, MP4 or WEBM · 18 MB max",
+                      recording
+                        ? "口述完成后停止录音。"
+                        : sourceMethod === "recording"
+                          ? "录音已准备好，可进行 AI 识别。"
+                          : kind === "image"
+                            ? "PNG、JPG、WEBP 或静态 GIF · 最大 8 MB"
+                            : "MP3、M4A、WAV、OGG、FLAC、MP4 或 WEBM · 最大 18 MB"
                     )}
                   </small>
                 </span>
-                <button
-                  className="button ghost"
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <Upload size={15} />
-                  {filename
-                    ? tr(language, "Replace", "更换")
-                    : tr(language, "Choose file", "选择文件")}
-                </button>
+                {kind === "audio" ? (
+                  <div className="material-file-actions">
+                    <button
+                      className={cn(
+                        "button",
+                        recording ? "danger" : "secondary"
+                      )}
+                      type="button"
+                      onClick={recording ? stopRecording : startRecording}
+                      disabled={processing}
+                      aria-pressed={recording}
+                    >
+                      {recording ? <Square size={14} /> : <Mic size={15} />}
+                      {recording
+                        ? tr(language, "Stop recording", "停止录音")
+                        : sourceMethod === "recording"
+                          ? tr(language, "Record again", "重新录音")
+                          : sourceMethod === "upload"
+                            ? tr(language, "Record instead", "改用录音")
+                            : tr(language, "Record audio", "录制音频")}
+                    </button>
+                    <button
+                      className="button ghost"
+                      type="button"
+                      onClick={() => fileRef.current?.click()}
+                      disabled={recording || processing}
+                    >
+                      <Upload size={15} />
+                      {filename
+                        ? tr(language, "Replace file", "更换文件")
+                        : tr(language, "Choose file", "选择文件")}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="button ghost"
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={processing}
+                  >
+                    <Upload size={15} />
+                    {filename
+                      ? tr(language, "Replace", "更换")
+                      : tr(language, "Choose file", "选择文件")}
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -2185,7 +2471,7 @@ function MaterialImportDialog({
             className="button secondary"
             type="button"
             onClick={extractMaterials}
-            disabled={!sourceReady || processing}
+            disabled={!sourceReady || processing || recording}
           >
             {processing ? (
               <LoaderCircle className="spin" size={15} />
