@@ -6100,15 +6100,15 @@ export default function Home() {
                           <strong>
                             {tr(
                               language,
-                              "Your AI pages will appear here",
-                              "AI 页面将在此显示"
+                              "Your AI handbook will appear here",
+                              "AI手册将在这里展示"
                             )}
                           </strong>
                           <span>
                             {tr(
                               language,
-                              "Each result is a complete image—no browser text overlay.",
-                              "每个结果都是完整图片，不再叠加浏览器文本。"
+                              "Multi-page generation supported",
+                              "支持多页生成"
                             )}
                           </span>
                         </div>
