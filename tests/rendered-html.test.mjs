@@ -49,6 +49,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
     materialImportRoute,
     handbookRoute,
     workspaceStorage,
+    handbookStorage,
   ] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
@@ -59,6 +60,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
     readFile(new URL("../app/api/material-import/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/handbook-render/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/workspace-storage.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/handbook-storage.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /type ReferenceKind = "text" \| "audio" \| "image" \| "canvas"/);
@@ -107,10 +109,18 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /fetch\("\/api\/handbook-render"/);
   assert.match(page, /handbookStylePrompt/);
   assert.match(page, /handbookReferenceImage/);
+  assert.match(page, /handbookPageCount/);
   assert.match(page, /selectedHandbookIdeas/);
   assert.match(page, /Generate AI handbook/);
   assert.match(page, /localizedIdeaName\(idea, language\)/);
   assert.match(page, /className="handbook-sheet"/);
+  assert.match(page, /className="handbook-page-image"/);
+  assert.match(page, /turnHandbookPage\("next"\)/);
+  assert.match(page, /turnHandbookPage\("previous"\)/);
+  assert.match(page, /Selected dessert cards are attached to every page prompt/);
+  assert.match(page, /exportHandbookImages/);
+  assert.match(page, /className="handbook-print-pages"/);
+  assert.doesNotMatch(page, /handbook-sheet-content|handbook-preview-list/);
   assert.doesNotMatch(page, /selectedHandbookRows|selectedMenuRows/);
   assert.doesNotMatch(page, /Every style batch is its own configurable card/);
   assert.doesNotMatch(page, /style cards selected/);
@@ -214,6 +224,12 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /\.material-review-row/);
   assert.match(css, /\.handbook-generator/);
   assert.match(css, /\.handbook-sheet/);
+  assert.match(css, /\.handbook-page-image/);
+  assert.match(css, /\.handbook-pagination/);
+  assert.match(css, /@keyframes handbook-page-turn-next/);
+  assert.match(css, /@keyframes handbook-page-turn-previous/);
+  assert.match(css, /\.handbook-print-pages/);
+  assert.doesNotMatch(css, /\.handbook-sheet-content|\.handbook-preview-list/);
   assert.match(css, /\.handbook-candidate-description/);
   assert.match(
     css,
@@ -290,15 +306,22 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(handbookRoute, /\/v1\/images\/edits/);
   assert.match(handbookRoute, /form\.append\(\s*"image\[\]"/);
   assert.match(handbookRoute, /buildHandbookPrompt/);
-  assert.match(handbookRoute, /Do not render any words, letters, numbers/);
+  assert.match(handbookRoute, /final, presentation-ready handbook page image/);
+  assert.match(handbookRoute, /COMPLETE SELECTED DESSERT CARD SOURCE/);
+  assert.match(handbookRoute, /pageCount/);
+  assert.match(handbookRoute, /images: pages\.map/);
+  assert.doesNotMatch(handbookRoute, /Do not render any words, letters, numbers/);
   assert.match(handbookRoute, /1024x1536/);
   assert.doesNotMatch(handbookRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
 
   assert.match(workspaceStorage, /window\.indexedDB/);
   assert.match(workspaceStorage, /document\.cookie/);
   assert.match(workspaceStorage, /dessert-valley-workspace/);
-  assert.match(workspaceStorage, /WORKSPACE_STORAGE_VERSION = 2/);
+  assert.match(workspaceStorage, /WORKSPACE_STORAGE_VERSION = 3/);
   assert.match(workspaceStorage, /Max-Age=31536000/);
   assert.match(workspaceStorage, /SameSite=Lax/);
   assert.match(workspaceStorage, /localStorage\.setItem\(FALLBACK_STORAGE_KEY/);
+  assert.match(handbookStorage, /pages: string\[\]/);
+  assert.match(handbookStorage, /typeof value\.src === "string"/);
+  assert.match(handbookStorage, /MAX_HANDBOOK_PAGE_COUNT = 4/);
 });

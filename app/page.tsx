@@ -9,6 +9,8 @@ import {
   CakeSlice,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleDollarSign,
   Download,
   Eraser,
@@ -54,6 +56,12 @@ import {
   WORKSPACE_STORAGE_VERSION,
   writeWorkspace,
 } from "./workspace-storage";
+import {
+  DEFAULT_HANDBOOK_PAGE_COUNT,
+  MAX_HANDBOOK_PAGE_COUNT,
+  normalizeHandbookResult,
+  type HandbookResult,
+} from "./handbook-storage";
 
 type Stage = "idea" | "design" | "product" | "bake";
 type ReferenceKind = "text" | "audio" | "image" | "canvas";
@@ -113,13 +121,6 @@ type RenderResult = {
   influences: ReferenceKind[];
 };
 
-type HandbookResult = {
-  src: string;
-  signature: string;
-  dessertCount: number;
-  visualInputCount: number;
-};
-
 type SizeVariant = {
   id: number;
   name: string;
@@ -153,6 +154,7 @@ type WorkspaceData = {
   handbookStylePrompt: string;
   handbookReferenceImage: string;
   handbookReferenceName: string;
+  handbookPageCount: number;
   handbookResult: HandbookResult | null;
 };
 
@@ -534,6 +536,7 @@ function createSeedWorkspaceData(): WorkspaceData {
     handbookStylePrompt: "",
     handbookReferenceImage: "",
     handbookReferenceName: "",
+    handbookPageCount: DEFAULT_HANDBOOK_PAGE_COUNT,
     handbookResult: null,
   };
 }
@@ -544,11 +547,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 type PersistedWorkspaceCore = Omit<
   WorkspaceData,
-  "materialPrices" | "productionRows"
+  | "materialPrices"
+  | "productionRows"
+  | "handbookPageCount"
+  | "handbookResult"
 > & {
   materialPrices?: unknown;
   prices?: unknown;
   productionRows: unknown;
+  handbookPageCount?: unknown;
+  handbookResult: unknown;
 };
 
 function isWorkspaceCoreData(
@@ -734,6 +742,14 @@ function migrateWorkspaceData(
     ...value,
     productionRows,
     materialPrices: normalizeMaterialPrices(value.materialPrices),
+    handbookPageCount:
+      typeof value.handbookPageCount === "number" &&
+      Number.isInteger(value.handbookPageCount) &&
+      value.handbookPageCount >= 1 &&
+      value.handbookPageCount <= MAX_HANDBOOK_PAGE_COUNT
+        ? value.handbookPageCount
+        : DEFAULT_HANDBOOK_PAGE_COUNT,
+    handbookResult: normalizeHandbookResult(value.handbookResult),
   } as WorkspaceData & { prices?: unknown };
   delete migrated.prices;
   return migrated;
@@ -760,59 +776,6 @@ function escapeHtml(value: string) {
         "'": "&#039;",
       })[character] ?? character
   );
-}
-
-function drawImageCover(
-  context: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  width: number,
-  height: number
-) {
-  const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
-  const renderedWidth = image.naturalWidth * scale;
-  const renderedHeight = image.naturalHeight * scale;
-  context.drawImage(
-    image,
-    (width - renderedWidth) / 2,
-    (height - renderedHeight) / 2,
-    renderedWidth,
-    renderedHeight
-  );
-}
-
-function wrapCanvasText(
-  context: CanvasRenderingContext2D,
-  value: string,
-  maximumWidth: number,
-  maximumLines = 3
-) {
-  const tokens = value.includes(" ")
-    ? value.split(/\s+/)
-    : Array.from(value);
-  const separator = value.includes(" ") ? " " : "";
-  const lines: string[] = [];
-  let current = "";
-  tokens.forEach((token) => {
-    const candidate = current ? `${current}${separator}${token}` : token;
-    if (context.measureText(candidate).width <= maximumWidth || !current) {
-      current = candidate;
-      return;
-    }
-    lines.push(current);
-    current = token;
-  });
-  if (current) lines.push(current);
-  if (lines.length <= maximumLines) return lines;
-  const visible = lines.slice(0, maximumLines);
-  let lastLine = visible[maximumLines - 1];
-  while (
-    lastLine &&
-    context.measureText(`${lastLine}…`).width > maximumWidth
-  ) {
-    lastLine = lastLine.slice(0, -1);
-  }
-  visible[maximumLines - 1] = `${lastLine}…`;
-  return visible;
 }
 
 function PixelSelect<Value extends string | number>({
@@ -2764,6 +2727,14 @@ export default function Home() {
   const [handbookStylePrompt, setHandbookStylePrompt] = useState("");
   const [handbookReferenceImage, setHandbookReferenceImage] = useState("");
   const [handbookReferenceName, setHandbookReferenceName] = useState("");
+  const [handbookPageCount, setHandbookPageCount] = useState(
+    DEFAULT_HANDBOOK_PAGE_COUNT
+  );
+  const [handbookPageCursor, setHandbookPageIndex] = useState(0);
+  const [handbookPageTurn, setHandbookPageTurn] = useState<{
+    direction: "next" | "previous";
+    token: number;
+  }>({ direction: "next", token: 0 });
   const [handbookResult, setHandbookResult] = useState<HandbookResult | null>(null);
   const [handbookGenerating, setHandbookGenerating] = useState(false);
   const [handbookError, setHandbookError] = useState("");
@@ -2820,6 +2791,7 @@ export default function Home() {
     [
       language,
       handbookStylePrompt,
+      handbookPageCount,
       handbookReferenceName,
       handbookReferenceImage
         ? `${handbookReferenceImage.length}:${handbookReferenceImage.slice(0, 36)}:${handbookReferenceImage.slice(-36)}`
@@ -2841,7 +2813,27 @@ export default function Home() {
   const handbookIsStale =
     Boolean(handbookResult) &&
     handbookResult?.signature !== currentHandbookSignature;
+  const handbookPages = handbookResult?.pages ?? [];
+  const handbookPageIndex = Math.min(
+    handbookPageCursor,
+    Math.max(0, handbookPages.length - 1)
+  );
+  const handbookPage = handbookPages[handbookPageIndex] ?? "";
   const stageIndex = stages.findIndex((item) => item.id === stage);
+
+  const turnHandbookPage = (direction: "next" | "previous") => {
+    const delta = direction === "next" ? 1 : -1;
+    const nextPageIndex = Math.min(
+      Math.max(handbookPageIndex + delta, 0),
+      Math.max(0, handbookPages.length - 1)
+    );
+    if (nextPageIndex === handbookPageIndex) return;
+    setHandbookPageIndex(nextPageIndex);
+    setHandbookPageTurn((current) => ({
+      direction,
+      token: current.token + 1,
+    }));
+  };
 
   const setActiveReferences = (update: StateUpdate<DesignReference[]>) =>
     setReferencePackages((current) => {
@@ -2946,6 +2938,7 @@ export default function Home() {
         setHandbookStylePrompt(workspace.handbookStylePrompt);
         setHandbookReferenceImage(workspace.handbookReferenceImage);
         setHandbookReferenceName(workspace.handbookReferenceName);
+        setHandbookPageCount(workspace.handbookPageCount);
         setHandbookResult(workspace.handbookResult);
         setWorkspaceHydrated(true);
       } catch {
@@ -2985,6 +2978,7 @@ export default function Home() {
       handbookStylePrompt,
       handbookReferenceImage,
       handbookReferenceName,
+      handbookPageCount,
       handbookResult,
     };
     const persistSnapshot = () => {
@@ -3007,6 +3001,7 @@ export default function Home() {
     bakeMode,
     handbookReferenceImage,
     handbookReferenceName,
+    handbookPageCount,
     handbookResult,
     handbookStylePrompt,
     ideaImage,
@@ -3789,6 +3784,7 @@ export default function Home() {
       handbook: {
         selectedIdeaIds: selectedHandbookIdeaIds,
         stylePrompt: handbookStylePrompt,
+        pageCount: handbookPageCount,
       },
     };
     downloadBlob(
@@ -3826,6 +3822,14 @@ export default function Home() {
         }
         if (typeof payload.handbook.stylePrompt === "string") {
           setHandbookStylePrompt(payload.handbook.stylePrompt);
+        }
+        if (
+          typeof payload.handbook.pageCount === "number" &&
+          Number.isInteger(payload.handbook.pageCount) &&
+          payload.handbook.pageCount >= 1 &&
+          payload.handbook.pageCount <= MAX_HANDBOOK_PAGE_COUNT
+        ) {
+          setHandbookPageCount(payload.handbook.pageCount);
         }
       }
       notify(tr(language, "Card pack imported", "卡片包已导入"));
@@ -3881,6 +3885,7 @@ export default function Home() {
     const stylePromptSnapshot = handbookStylePrompt;
     const styleReferenceSnapshot = handbookReferenceImage;
     const styleReferenceNameSnapshot = handbookReferenceName;
+    const pageCountSnapshot = handbookPageCount;
     const maximumDessertVisuals = styleReferenceSnapshot ? 5 : 6;
 
     setHandbookGenerating(true);
@@ -3923,6 +3928,7 @@ export default function Home() {
         body: JSON.stringify({
           language: languageSnapshot,
           stylePrompt: stylePromptSnapshot,
+          pageCount: pageCountSnapshot,
           styleReference: normalizedStyleReference
             ? {
                 name:
@@ -3940,26 +3946,38 @@ export default function Home() {
       });
       const payload = (await response.json().catch(() => null)) as
         | {
-            image?: string;
+            images?: unknown;
             dessertCount?: number;
             visualInputCount?: number;
             error?: { code?: string; message?: string };
           }
         | null;
-      if (!response.ok || !payload?.image) {
+      const pages = Array.isArray(payload?.images)
+        ? payload.images.filter(
+            (image): image is string =>
+              typeof image === "string" &&
+              image.startsWith("data:image/")
+          )
+        : [];
+      if (
+        !response.ok ||
+        pages.length !== pageCountSnapshot
+      ) {
         throw new Error(payload?.error?.code || "generation_failed");
       }
       setHandbookResult({
-        src: payload.image,
+        pages,
         signature: signatureSnapshot,
         dessertCount: payload.dessertCount ?? selectedSnapshot.length,
         visualInputCount: payload.visualInputCount ?? 0,
       });
+      setHandbookPageIndex(0);
+      setHandbookPageTurn({ direction: "next", token: 0 });
       notify(
         tr(
           languageSnapshot,
-          "AI handbook artwork is ready",
-          "AI 手册视觉已生成"
+          `${pages.length}-page AI handbook is ready`,
+          `${pages.length} 页 AI 手册已生成`
         )
       );
     } catch (error) {
@@ -4008,120 +4026,91 @@ export default function Home() {
   };
 
   const exportHandbookHTML = () => {
-    if (!selectedHandbookIdeas.length) {
+    const pages = handbookResult?.pages ?? [];
+    if (!pages.length) {
       notify(
         tr(
           language,
-          "Choose at least one dessert card before exporting.",
-          "请至少选择一张甜点卡片后再导出。"
+          "Generate the AI handbook pages before exporting.",
+          "请先生成 AI 手册页面再导出。"
         )
       );
       return;
     }
-    const cards = selectedHandbookIdeas
+    const pageMarkup = pages
       .map(
-        (idea, index) =>
-          `<article><span>${String(index + 1).padStart(2, "0")}</span><div><h2>${escapeHtml(
-            localizedIdeaName(idea, language)
-          )}</h2><p>${escapeHtml(idea.prompt)}</p></div></article>`
+        (page, index) =>
+          `<section class="page"><img src="${escapeHtml(
+            page
+          )}" alt="${escapeHtml(
+            tr(
+              language,
+              `AI-generated dessert handbook page ${index + 1}`,
+              `AI 生成的甜点手册第 ${index + 1} 页`
+            )
+          )}"></section>`
       )
       .join("");
     const handbookTitle = tr(language, "Dessert Handbook", "甜点手册");
-    const artwork = handbookResult?.src
-      ? `<img class="artwork" src="${handbookResult.src}" alt="">`
-      : "";
     const html = `<!doctype html><html lang="${
       language === "zh" ? "zh-CN" : "en"
     }"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Dessert Valley — ${escapeHtml(
       handbookTitle
-    )}</title><style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box}body{margin:0;background:#d9a441;color:#2f2926;font-family:ui-serif,Georgia,"Songti SC",serif}.page{position:relative;width:210mm;min-height:297mm;margin:auto;overflow:hidden;background:#f4dfa8}.artwork{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.paper{position:relative;z-index:1;min-height:267mm;margin:15mm;padding:16mm;background:rgba(255,240,189,.91);border:2px solid #70452e;box-shadow:inset 0 0 0 5px rgba(244,223,168,.86)}header{padding-bottom:12mm;border-bottom:2px solid #70452e}header small{font:700 9pt ui-monospace,monospace;letter-spacing:.18em;color:#3f713d}h1{margin:4mm 0 0;font-size:28pt}article{display:grid;grid-template-columns:10mm 1fr;gap:5mm;padding:7mm 0;border-bottom:1px solid rgba(112,69,46,.45)}article>span{font:700 9pt ui-monospace,monospace;color:#3f713d}h2{margin:0 0 2mm;font-size:15pt}article p{margin:0;font:10pt/1.55 system-ui,sans-serif;color:#4a4038}@media(max-width:800px){.page{width:100%;min-height:100vh}.paper{min-height:calc(100vh - 32px);margin:16px;padding:28px}}@media print{body{background:white}.page{margin:0}}</style></head><body><main class="page">${artwork}<section class="paper"><header><small>DESSERT VALLEY</small><h1>${escapeHtml(
-      handbookTitle
-    )}</h1></header>${cards}</section></main></body></html>`;
+    )}</title><style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box}body{margin:0;background:#3f713d}.page{width:min(100%,210mm);aspect-ratio:2/3;margin:0 auto 18px;background:#f4dfa8;break-after:page;page-break-after:always}.page:last-child{margin-bottom:0;break-after:auto;page-break-after:auto}.page img{width:100%;height:100%;display:block;object-fit:cover}@media print{body{background:white}.page{width:210mm;height:297mm;margin:0}}</style></head><body><main>${pageMarkup}</main></body></html>`;
     downloadBlob(new Blob([html], { type: "text/html" }), "dessert-valley-handbook.html");
     notify(tr(language, "HTML handbook exported", "HTML 手册已导出"));
   };
 
-  const exportHandbookPNG = async () => {
-    if (!selectedHandbookIdeas.length) {
+  const exportHandbookImages = async () => {
+    const pages = handbookResult?.pages ?? [];
+    if (!pages.length) {
       notify(
         tr(
           language,
-          "Choose at least one dessert card before exporting.",
-          "请至少选择一张甜点卡片后再导出。"
+          "Generate the AI handbook pages before exporting.",
+          "请先生成 AI 手册页面再导出。"
         )
       );
       return;
     }
-    const canvas = document.createElement("canvas");
-    canvas.width = 1200;
-    canvas.height = Math.max(1800, 520 + selectedHandbookIdeas.length * 190);
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    context.fillStyle = "#e7c971";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    if (handbookResult?.src) {
-      try {
-        const artwork = await loadCanvasImage(handbookResult.src);
-        drawImageCover(context, artwork, canvas.width, canvas.height);
-      } catch {
-        // The typographic handbook remains exportable without the artwork.
-      }
+    try {
+      const pageBlobs = await Promise.all(
+        pages.map(async (page) => {
+          const response = await fetch(page);
+          if (!response.ok) throw new Error("page_export_failed");
+          return response.blob();
+        })
+      );
+      pageBlobs.forEach((blob, index) => {
+        const extension = blob.type.includes("png")
+          ? "png"
+          : blob.type.includes("webp")
+            ? "webp"
+            : "jpg";
+        downloadBlob(
+          blob,
+          `dessert-valley-handbook-${String(index + 1).padStart(
+            2,
+            "0"
+          )}.${extension}`
+        );
+      });
+      notify(
+        tr(
+          language,
+          `${pageBlobs.length} handbook page images exported`,
+          `已导出 ${pageBlobs.length} 张手册页面图片`
+        )
+      );
+    } catch {
+      notify(
+        tr(
+          language,
+          "The handbook pages could not be exported.",
+          "无法导出手册页面。"
+        )
+      );
     }
-    context.fillStyle = "rgba(255, 240, 189, .91)";
-    context.fillRect(68, 68, canvas.width - 136, canvas.height - 136);
-    context.strokeStyle = "#70452e";
-    context.lineWidth = 5;
-    context.strokeRect(68, 68, canvas.width - 136, canvas.height - 136);
-    context.strokeStyle = "rgba(112, 69, 46, .45)";
-    context.lineWidth = 2;
-    context.strokeRect(82, 82, canvas.width - 164, canvas.height - 164);
-    context.textAlign = "left";
-    context.fillStyle = "#3f713d";
-    context.font = "700 25px ui-monospace, monospace";
-    context.fillText("DESSERT VALLEY", 132, 160);
-    context.fillStyle = "#2f2926";
-    context.font = '700 62px Georgia, "Songti SC", serif';
-    context.fillText(tr(language, "Dessert Handbook", "甜点手册"), 132, 242);
-    context.fillStyle = "#70452e";
-    context.fillRect(132, 286, canvas.width - 264, 3);
-
-    let y = 370;
-    selectedHandbookIdeas.forEach((idea, index) => {
-      context.fillStyle = "#3f713d";
-      context.font = "700 22px ui-monospace, monospace";
-      context.fillText(String(index + 1).padStart(2, "0"), 132, y + 6);
-      context.fillStyle = "#2f2926";
-      context.font = '700 34px Georgia, "Songti SC", serif';
-      const nameLines = wrapCanvasText(
-        context,
-        localizedIdeaName(idea, language),
-        820,
-        2
-      );
-      nameLines.forEach((line, lineIndex) => {
-        context.fillText(line, 210, y + lineIndex * 42);
-      });
-      const descriptionY = y + nameLines.length * 42 + 12;
-      context.fillStyle = "#4a4038";
-      context.font = '22px system-ui, "PingFang SC", sans-serif';
-      const descriptionLines = wrapCanvasText(
-        context,
-        idea.prompt,
-        820,
-        3
-      );
-      descriptionLines.forEach((line, lineIndex) => {
-        context.fillText(line, 210, descriptionY + lineIndex * 31);
-      });
-      y += Math.max(175, nameLines.length * 42 + descriptionLines.length * 31 + 58);
-      context.fillStyle = "rgba(112, 69, 46, .28)";
-      context.fillRect(210, y - 28, 820, 2);
-    });
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      downloadBlob(blob, "dessert-valley-handbook.png");
-      notify(tr(language, "Image handbook exported", "图片手册已导出"));
-    });
   };
 
   const sendAgentMessage = () => {
@@ -5923,6 +5912,40 @@ export default function Home() {
                         </button>
                       ))}
                     </div>
+                    <div className="handbook-page-settings">
+                      <label>
+                        <span>{tr(language, "Pages", "页数")}</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={MAX_HANDBOOK_PAGE_COUNT}
+                          value={handbookPageCount}
+                          onChange={(event) => {
+                            const nextValue = Number(event.target.value);
+                            setHandbookPageCount(
+                              Math.min(
+                                MAX_HANDBOOK_PAGE_COUNT,
+                                Math.max(
+                                  1,
+                                  Number.isFinite(nextValue)
+                                    ? Math.round(nextValue)
+                                    : 1
+                                )
+                              )
+                            );
+                          }}
+                          aria-describedby="handbook-page-help"
+                        />
+                      </label>
+                      <p id="handbook-page-help">
+                        <Layers3 size={14} />
+                        {tr(
+                          language,
+                          `1–${MAX_HANDBOOK_PAGE_COUNT} finished AI images. Selected dessert cards are attached to every page prompt.`,
+                          `可生成 1–${MAX_HANDBOOK_PAGE_COUNT} 张完整 AI 页面；每页提示词都会附上已选甜点卡片。`
+                        )}
+                      </p>
+                    </div>
                     {handbookReferenceImage ? (
                       <div className="handbook-reference-attached">
                         <WorkspaceImage src={handbookReferenceImage} alt="" />
@@ -5989,8 +6012,8 @@ export default function Home() {
                       {handbookGenerating
                         ? tr(
                             language,
-                            "Generating handbook…",
-                            "正在生成手册……"
+                            `Generating ${handbookPageCount} pages…`,
+                            `正在生成 ${handbookPageCount} 页……`
                           )
                         : handbookIsStale
                           ? tr(
@@ -6012,8 +6035,8 @@ export default function Home() {
                       <span>
                         {tr(
                           language,
-                          "Composing selected desserts and style references…",
-                          "正在融合所选甜点与风格参考……"
+                          `Composing ${handbookPageCount} finished pages from the selected cards and style references…`,
+                          `正在根据已选卡片与风格参考生成 ${handbookPageCount} 张完整页面……`
                         )}
                       </span>
                     </div>
@@ -6025,79 +6048,148 @@ export default function Home() {
                     </div>
                   )}
 
-                  <div className="handbook-sheet">
-                    {handbookResult && (
-                      <WorkspaceImage
-                        className="handbook-artwork"
-                        src={handbookResult.src}
-                        alt={tr(
-                          language,
-                          "AI-generated handbook artwork",
-                          "AI 生成的手册视觉"
-                        )}
-                        portrait
-                      />
-                    )}
-                    <div className="handbook-sheet-content">
-                      <Sprout size={20} />
-                      <small>DESSERT VALLEY</small>
-                      <strong>
-                        {tr(language, "Today’s Dessert Garden", "今日甜点花园")}
-                      </strong>
-                      {selectedHandbookIdeas.length ? (
+                  <div className="handbook-book">
+                    <div
+                      id="handbook-page-viewer"
+                      className="handbook-sheet"
+                      role="group"
+                      tabIndex={0}
+                      aria-label={tr(
+                        language,
+                        handbookPage
+                          ? `AI handbook page ${handbookPageIndex + 1} of ${handbookPages.length}. Use the left and right arrow keys to turn pages.`
+                          : "AI handbook page preview",
+                        handbookPage
+                          ? `AI 手册第 ${handbookPageIndex + 1} 页，共 ${handbookPages.length} 页。可使用左右方向键翻页。`
+                          : "AI 手册页面预览"
+                      )}
+                      onKeyDown={(event) => {
+                        if (event.key === "ArrowLeft") {
+                          event.preventDefault();
+                          turnHandbookPage("previous");
+                        }
+                        if (event.key === "ArrowRight") {
+                          event.preventDefault();
+                          turnHandbookPage("next");
+                        }
+                      }}
+                    >
+                      {handbookPage ? (
                         <div
+                          key={`${handbookPageIndex}-${handbookPageTurn.token}`}
                           className={cn(
-                            "handbook-preview-list",
-                            selectedHandbookIdeas.length > 4 && "dense"
+                            "handbook-page",
+                            handbookPageTurn.token > 0 &&
+                              `turn-${handbookPageTurn.direction}`
                           )}
                         >
-                          {selectedHandbookIdeas.map((idea, index) => (
-                            <div key={idea.id}>
-                              <span>
-                                {String(index + 1).padStart(2, "0")}
-                              </span>
-                              <p>
-                                <b>{localizedIdeaName(idea, language)}</b>
-                                <small>{idea.prompt}</small>
-                              </p>
-                            </div>
-                          ))}
+                          <WorkspaceImage
+                            className="handbook-page-image"
+                            src={handbookPage}
+                            alt={tr(
+                              language,
+                              `AI-generated dessert handbook page ${handbookPageIndex + 1} of ${handbookPages.length}`,
+                              `AI 生成的甜点手册第 ${handbookPageIndex + 1} 页，共 ${handbookPages.length} 页`
+                            )}
+                            portrait
+                          />
                         </div>
                       ) : (
-                        <span className="handbook-empty-selection">
-                          {tr(language, "Choose dessert cards", "请选择甜点卡片")}
-                        </span>
+                        <div className="handbook-page-empty">
+                          <BookOpen size={24} />
+                          <strong>
+                            {tr(
+                              language,
+                              "Your AI pages will appear here",
+                              "AI 页面将在此显示"
+                            )}
+                          </strong>
+                          <span>
+                            {tr(
+                              language,
+                              "Each result is a complete image—no browser text overlay.",
+                              "每个结果都是完整图片，不再叠加浏览器文本。"
+                            )}
+                          </span>
+                        </div>
                       )}
                     </div>
+                    {handbookPages.length > 1 && (
+                      <nav
+                        className="handbook-pagination"
+                        aria-label={tr(
+                          language,
+                          "Handbook page controls",
+                          "手册翻页控制"
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => turnHandbookPage("previous")}
+                          disabled={handbookPageIndex === 0}
+                          aria-controls="handbook-page-viewer"
+                          aria-label={tr(
+                            language,
+                            "Previous handbook page",
+                            "上一页手册"
+                          )}
+                        >
+                          <ChevronLeft size={17} />
+                        </button>
+                        <output aria-live="polite">
+                          {tr(
+                            language,
+                            `Page ${handbookPageIndex + 1} / ${handbookPages.length}`,
+                            `第 ${handbookPageIndex + 1} / ${handbookPages.length} 页`
+                          )}
+                        </output>
+                        <button
+                          type="button"
+                          onClick={() => turnHandbookPage("next")}
+                          disabled={
+                            handbookPageIndex === handbookPages.length - 1
+                          }
+                          aria-controls="handbook-page-viewer"
+                          aria-label={tr(
+                            language,
+                            "Next handbook page",
+                            "下一页手册"
+                          )}
+                        >
+                          <ChevronRight size={17} />
+                        </button>
+                      </nav>
+                    )}
                   </div>
                   {handbookResult && (
                     <p className="handbook-result-note">
                       {handbookIsStale
                         ? tr(
                             language,
-                            "Selection or style changed—update the artwork before final export.",
-                            "选卡或风格已改变，最终导出前请更新视觉。"
+                            "Selection, style, or page count changed—regenerate the pages before final export.",
+                            "选卡、风格或页数已改变，最终导出前请重新生成页面。"
                           )
                         : tr(
                             language,
-                            `AI artwork reflects ${handbookResult.dessertCount} desserts and ${handbookResult.visualInputCount} visual references.`,
-                            `AI 视觉已融合 ${handbookResult.dessertCount} 款甜点与 ${handbookResult.visualInputCount} 张视觉参考。`
+                            `${handbookResult.pages.length} complete AI pages reflect ${handbookResult.dessertCount} desserts and ${handbookResult.visualInputCount} visual references.`,
+                            `${handbookResult.pages.length} 张完整 AI 页面已融合 ${handbookResult.dessertCount} 款甜点与 ${handbookResult.visualInputCount} 张视觉参考。`
                           )}
                     </p>
                   )}
                   <button
                     className="button secondary full"
                     type="button"
-                    onClick={exportHandbookPNG}
-                    disabled={!selectedHandbookIdeas.length}
+                    onClick={exportHandbookImages}
+                    disabled={!handbookPages.length}
                   >
-                    <FileImage size={15} /> {tr(language, "Export image", "导出图片")}
+                    <FileImage size={15} />{" "}
+                    {tr(language, "Export page images", "导出页面图片")}
                   </button>
                   <button
                     className="button secondary full"
                     type="button"
                     onClick={exportHandbookHTML}
-                    disabled={!selectedHandbookIdeas.length}
+                    disabled={!handbookPages.length}
                   >
                     <FileCode2 size={15} /> {tr(language, "Export HTML", "导出 HTML")}
                   </button>
@@ -6105,10 +6197,20 @@ export default function Home() {
                     className="button primary full"
                     type="button"
                     onClick={() => window.print()}
-                    disabled={!selectedHandbookIdeas.length}
+                    disabled={!handbookPages.length}
                   >
                     <FileText size={15} /> {tr(language, "Export PDF", "导出 PDF")}
                   </button>
+                  <div className="handbook-print-pages" aria-hidden="true">
+                    {handbookPages.map((page, index) => (
+                      <WorkspaceImage
+                        key={`${page.slice(-36)}-${index}`}
+                        src={page}
+                        alt=""
+                        portrait
+                      />
+                    ))}
+                  </div>
                 </aside>
               </div>
             )}

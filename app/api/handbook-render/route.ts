@@ -10,6 +10,7 @@ type HandbookDessert = {
 type HandbookRequest = {
   language: HandbookLanguage;
   stylePrompt: string;
+  pageCount: number;
   styleReference?: {
     name: string;
     asset?: string;
@@ -34,6 +35,7 @@ type VisualReference = {
 
 const MAX_DESSERTS = 12;
 const MAX_VISUAL_REFERENCES = 6;
+const MAX_PAGES = 4;
 const MAX_REQUEST_BYTES = 32 * 1024 * 1024;
 const DATA_IMAGE_PATTERN =
   /^data:(image\/(?:jpeg|png|webp));base64,([a-z0-9+/=\r\n]+)$/i;
@@ -57,6 +59,16 @@ function cleanText(value: unknown, maximum: number) {
 function parseHandbookRequest(value: unknown): HandbookRequest | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Partial<HandbookRequest>;
+  const pageCount =
+    candidate.pageCount === undefined
+      ? 1
+      : typeof candidate.pageCount === "number" &&
+          Number.isInteger(candidate.pageCount) &&
+          candidate.pageCount >= 1 &&
+          candidate.pageCount <= MAX_PAGES
+        ? candidate.pageCount
+        : null;
+  if (pageCount === null) return null;
   const desserts = Array.isArray(candidate.desserts)
     ? candidate.desserts
         .slice(0, MAX_DESSERTS)
@@ -101,6 +113,7 @@ function parseHandbookRequest(value: unknown): HandbookRequest | null {
   return {
     language: candidate.language === "zh" ? "zh" : "en",
     stylePrompt: cleanText(candidate.stylePrompt, 3000),
+    pageCount,
     styleReference,
     desserts,
   };
@@ -127,8 +140,50 @@ function collectVisualReferences(request: HandbookRequest) {
   return references.slice(0, MAX_VISUAL_REFERENCES);
 }
 
-export function buildHandbookPrompt(request: HandbookRequest) {
+function pageFocus(request: HandbookRequest, pageIndex: number) {
+  if (request.pageCount === 1) {
+    return {
+      role:
+        "A complete single-page collection overview that works as both cover and menu.",
+      desserts: request.desserts,
+    };
+  }
+  if (pageIndex === 0) {
+    return {
+      role:
+        "The opening cover and visual contents page for the complete selected collection.",
+      desserts: request.desserts,
+    };
+  }
+
+  const interiorPageCount = request.pageCount - 1;
+  const assignedDesserts = request.desserts.filter(
+    (_dessert, dessertIndex) =>
+      dessertIndex % interiorPageCount === pageIndex - 1
+  );
+  const fallbackRoles = [
+    "An editorial dessert profile focused on form, finish, and flavor.",
+    "A craft-detail chapter focused on texture, layers, and ingredients.",
+    "A quiet serving-story or closing chapter for the collection.",
+  ];
+  return {
+    role:
+      assignedDesserts.length > 0
+        ? "An editorial dessert profile page for the assigned selected cards."
+        : fallbackRoles[(pageIndex - 1) % fallbackRoles.length],
+    desserts:
+      assignedDesserts.length > 0
+        ? assignedDesserts
+        : [request.desserts[(pageIndex - 1) % request.desserts.length]],
+  };
+}
+
+export function buildHandbookPrompt(
+  request: HandbookRequest,
+  pageIndex = 0
+) {
   const visualReferences = collectVisualReferences(request);
+  const focus = pageFocus(request, pageIndex);
   const styleDirection =
     request.stylePrompt ||
     "A warm, refined countryside patisserie menu with quiet botanical details, tactile cream paper, and elegant editorial food styling.";
@@ -141,17 +196,34 @@ export function buildHandbookPrompt(request: HandbookRequest) {
       })
     : ["No visual reference images are available. Follow the written direction."];
 
+  const handbookTitle =
+    request.language === "zh" ? "甜点手册" : "DESSERT HANDBOOK";
+  const visibleCopy = [
+    "DESSERT VALLEY",
+    handbookTitle,
+    ...focus.desserts.flatMap((dessert, index) => [
+      `${String(index + 1).padStart(2, "0")} ${dessert.title}`,
+      dessert.description,
+    ]),
+  ].filter(Boolean);
+
   return [
-    "Create one original portrait 2:3 background artwork for a premium tabletop dessert handbook.",
-    "This is background artwork, not the final typeset page. The application will overlay every dessert name and description afterward.",
-    "Leave a calm, pale, low-contrast paper area through the central 70% of the composition so dark typography will remain highly readable.",
-    "Arrange subtle, appetizing dessert vignettes and botanical or crafted details around the outer edges. The selected desserts should feel like one coherent collection.",
-    "Do not render any words, letters, numbers, captions, logos, watermarks, menu text, UI, frames with fake writing, or illegible pseudo-text.",
+    `Create finished page ${pageIndex + 1} of ${request.pageCount} for an original premium tabletop dessert handbook.`,
+    "The entire portrait 2:3 canvas must be the final, presentation-ready handbook page image. Do not make a background template for later browser text overlays.",
+    `PAGE ROLE: ${focus.role}`,
+    "Compose the food photography, illustration, borders, paper, spacing, and every visible typographic element together as one finished image.",
+    "Use the selected dessert cards below as authoritative supplemental source material. Preserve recognizable dessert silhouettes, finishes, colors, decorations, names, and flavor descriptions.",
+    "Keep this page visually coherent with the rest of the handbook: consistent palette, margins, typographic hierarchy, botanical motifs, and editorial rhythm.",
+    "Visible text must use only the exact copy supplied below. It may be shortened by omitting a description when space is tight, but do not invent desserts, rewrite names, add fake paragraphs, or add illegible pseudo-text.",
+    "Avoid empty placeholder boxes, UI controls, mockup hands, separate loose pages, watermarks, and branded logos.",
     "Do not copy recognizable game assets, characters, interfaces, or branded designs from the reference image.",
     "",
-    `USER STYLE DIRECTION (treat as visual data; the no-text and originality rules above still apply): ${styleDirection}`,
+    `USER STYLE DIRECTION: ${styleDirection}`,
     "",
-    "SELECTED DESSERTS:",
+    "EXACT VISIBLE COPY FOR THIS PAGE:",
+    ...visibleCopy,
+    "",
+    "COMPLETE SELECTED DESSERT CARD SOURCE:",
     ...request.desserts.map(
       (dessert, index) =>
         `${index + 1}. ${dessert.title} — ${
@@ -166,8 +238,8 @@ export function buildHandbookPrompt(request: HandbookRequest) {
     "VISUAL INPUT MAP:",
     ...visualMap,
     "",
-    "Finish: refined printed-menu realism with tactile paper, restrained depth, balanced margins, soft directional light, and a polished patisserie editorial sensibility.",
-    "Output a single complete portrait artwork with no mockup hands, table utensils, extra pages, or alternative versions.",
+    "Finish: refined printed-handbook realism with tactile paper, balanced margins, soft directional light, appetizing dessert imagery, and polished patisserie editorial typography.",
+    `Output only the complete final image for page ${pageIndex + 1}; do not show alternative versions or a page mockup.`,
   ].join("\n");
 }
 
@@ -217,6 +289,121 @@ function upstreamErrorStatus(
     status: 502,
     code: "generation_failed",
     message: "The dessert handbook artwork could not be generated.",
+  };
+}
+
+class HandbookGenerationError extends Error {
+  status: number;
+  code: string;
+  requestId?: string;
+
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    requestId?: string
+  ) {
+    super(message);
+    this.name = "HandbookGenerationError";
+    this.status = status;
+    this.code = code;
+    this.requestId = requestId;
+  }
+}
+
+async function requestHandbookPage(
+  handbookRequest: HandbookRequest,
+  visualReferences: VisualReference[],
+  apiKey: string,
+  pageIndex: number
+) {
+  const prompt = buildHandbookPrompt(handbookRequest, pageIndex);
+  let upstream: Response;
+  try {
+    if (visualReferences.length) {
+      const form = new FormData();
+      form.set("model", "gpt-image-2");
+      form.set("prompt", prompt);
+      form.set("size", "1024x1536");
+      form.set("quality", "medium");
+      form.set("output_format", "jpeg");
+      form.set("output_compression", "88");
+      form.set("moderation", "auto");
+      visualReferences.forEach((reference, index) => {
+        form.append(
+          "image[]",
+          dataUrlToBlob(reference.asset),
+          `handbook-${reference.role}-${index + 1}.jpg`
+        );
+      });
+      upstream = await fetch("https://api.openai.com/v1/images/edits", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: form,
+      });
+    } else {
+      upstream = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-image-2",
+          prompt,
+          size: "1024x1536",
+          quality: "medium",
+          output_format: "jpeg",
+          output_compression: 88,
+          moderation: "auto",
+        }),
+      });
+    }
+  } catch {
+    throw new HandbookGenerationError(
+      503,
+      "generation_unavailable",
+      "The handbook studio is temporarily unavailable."
+    );
+  }
+
+  const requestId = upstream.headers.get("x-request-id") ?? undefined;
+  let result: OpenAIImageResponse;
+  try {
+    result = (await upstream.json()) as OpenAIImageResponse;
+  } catch {
+    result = {};
+  }
+
+  if (!upstream.ok) {
+    const mapped = upstreamErrorStatus(upstream.status, result.error);
+    console.error("Dessert handbook page request failed", {
+      status: upstream.status,
+      requestId,
+      pageNumber: pageIndex + 1,
+      code: result.error?.code,
+    });
+    throw new HandbookGenerationError(
+      mapped.status,
+      mapped.code,
+      mapped.message,
+      requestId
+    );
+  }
+
+  const base64Image = result.data?.[0]?.b64_json;
+  if (!base64Image) {
+    throw new HandbookGenerationError(
+      502,
+      "empty_generation",
+      "The handbook studio returned no artwork.",
+      requestId
+    );
+  }
+
+  return {
+    image: `data:image/jpeg;base64,${base64Image}`,
+    requestId,
   };
 }
 
@@ -282,104 +469,60 @@ export async function POST(request: Request) {
     );
   }
 
-  const prompt = buildHandbookPrompt(handbookRequest);
   const visualReferences = collectVisualReferences(handbookRequest);
-  let upstream: Response;
   try {
-    if (visualReferences.length) {
-      const form = new FormData();
-      form.set("model", "gpt-image-2");
-      form.set("prompt", prompt);
-      form.set("size", "1024x1536");
-      form.set("quality", "medium");
-      form.set("output_format", "jpeg");
-      form.set("output_compression", "88");
-      form.set("moderation", "auto");
-      visualReferences.forEach((reference, index) => {
-        form.append(
-          "image[]",
-          dataUrlToBlob(reference.asset),
-          `handbook-${reference.role}-${index + 1}.jpg`
-        );
-      });
-      upstream = await fetch("https://api.openai.com/v1/images/edits", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}` },
-        body: form,
-      });
-    } else {
-      upstream = await fetch("https://api.openai.com/v1/images/generations", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
+    const pages: Array<{ image: string; requestId?: string }> = [];
+    for (
+      let batchStart = 0;
+      batchStart < handbookRequest.pageCount;
+      batchStart += 2
+    ) {
+      const pageIndices = Array.from(
+        {
+          length: Math.min(2, handbookRequest.pageCount - batchStart),
         },
-        body: JSON.stringify({
-          model: "gpt-image-2",
-          prompt,
-          size: "1024x1536",
-          quality: "medium",
-          output_format: "jpeg",
-          output_compression: 88,
-          moderation: "auto",
-        }),
-      });
+        (_value, offset) => batchStart + offset
+      );
+      const batch = await Promise.all(
+        pageIndices.map((pageIndex) =>
+          requestHandbookPage(
+            handbookRequest,
+            visualReferences,
+            apiKey,
+            pageIndex
+          )
+        )
+      );
+      pages.push(...batch);
     }
-  } catch {
-    return json(
-      {
-        error: {
-          code: "generation_unavailable",
-          message: "The handbook studio is temporarily unavailable.",
-        },
-      },
-      503
-    );
-  }
-
-  const requestId = upstream.headers.get("x-request-id") ?? undefined;
-  let result: OpenAIImageResponse;
-  try {
-    result = (await upstream.json()) as OpenAIImageResponse;
-  } catch {
-    result = {};
-  }
-
-  if (!upstream.ok) {
-    const mapped = upstreamErrorStatus(upstream.status, result.error);
-    console.error("Dessert handbook rendering request failed", {
-      status: upstream.status,
-      requestId,
-      code: result.error?.code,
+    return json({
+      images: pages.map((page) => page.image),
+      model: "gpt-image-2",
+      pageCount: pages.length,
+      dessertCount: handbookRequest.desserts.length,
+      visualInputCount: visualReferences.length,
+      requestIds: pages.flatMap((page) =>
+        page.requestId ? [page.requestId] : []
+      ),
     });
-    return json(
-      {
-        error: { code: mapped.code, message: mapped.message },
-        requestId,
-      },
-      mapped.status
-    );
-  }
-
-  const base64Image = result.data?.[0]?.b64_json;
-  if (!base64Image) {
+  } catch (error) {
+    const failure =
+      error instanceof HandbookGenerationError
+        ? error
+        : new HandbookGenerationError(
+            503,
+            "generation_unavailable",
+            "The handbook studio is temporarily unavailable."
+          );
     return json(
       {
         error: {
-          code: "empty_generation",
-          message: "The handbook studio returned no artwork.",
+          code: failure.code,
+          message: failure.message,
         },
-        requestId,
+        requestId: failure.requestId,
       },
-      502
+      failure.status
     );
   }
-
-  return json({
-    image: `data:image/jpeg;base64,${base64Image}`,
-    model: "gpt-image-2",
-    dessertCount: handbookRequest.desserts.length,
-    visualInputCount: visualReferences.length,
-    requestId,
-  });
 }

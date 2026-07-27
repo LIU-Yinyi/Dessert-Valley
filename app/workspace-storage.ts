@@ -5,7 +5,7 @@ const ACTIVE_WORKSPACE_KEY = "active";
 const FALLBACK_STORAGE_KEY = "dessert-valley-workspace-fallback";
 
 export const WORKSPACE_COOKIE_NAME = "dessert-valley-workspace";
-export const WORKSPACE_STORAGE_VERSION = 2;
+export const WORKSPACE_STORAGE_VERSION = 3;
 
 export type WorkspaceEnvelope<T> = {
   version: number;
