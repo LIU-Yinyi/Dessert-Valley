@@ -1121,6 +1121,10 @@ input[type="file"] {
   gap: 24px;
 }
 
+.design-grid > .pixel-panel {
+  min-width: 0;
+}
+
 .dock-panel,
 .muse-panel,
 .materials-panel,
@@ -1418,6 +1422,7 @@ input[type="file"] {
 .reference-card-copy p {
   display: -webkit-box;
   overflow: hidden;
+  overflow-wrap: anywhere;
   margin: 7px 0 0;
   color: var(--ink-soft);
   font-size: 10px;
@@ -4371,7 +4376,10 @@ button.empty-state {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .design-grid,
+  .design-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .diner-layout {
     grid-template-columns: 1fr;
   }
@@ -4592,6 +4600,10 @@ button.empty-state {
 
   .reference-card {
     grid-template-columns: 82px minmax(0, 1fr);
+  }
+
+  .reference-card-copy {
+    padding-right: 56px;
   }
 
   .muse-result,
