@@ -2994,6 +2994,7 @@ export default function Home() {
   const [toast, setToast] = useState("");
   const importRef = useRef<HTMLInputElement | null>(null);
   const ideaSelectorRef = useRef<HTMLDivElement | null>(null);
+  const dockAddRef = useRef<HTMLDivElement | null>(null);
   const materialUploadRef = useRef<HTMLDivElement | null>(null);
   const handbookReferenceRef = useRef<HTMLInputElement | null>(null);
   const workspaceSaveWarningShown = useRef(false);
@@ -3295,6 +3296,12 @@ export default function Home() {
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
       if (
+        dockAddRef.current &&
+        !dockAddRef.current.contains(event.target as Node)
+      ) {
+        setDockOpen(false);
+      }
+      if (
         ideaSelectorRef.current &&
         !ideaSelectorRef.current.contains(event.target as Node)
       ) {
@@ -3309,6 +3316,10 @@ export default function Home() {
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (dockAddRef.current?.contains(document.activeElement)) {
+          dockAddRef.current.querySelector<HTMLButtonElement>("button")?.focus();
+        }
+        setDockOpen(false);
         setIdeaMenuOpen(false);
         setMaterialUploadMenuOpen(false);
         setAgentOpen(false);
@@ -3325,6 +3336,7 @@ export default function Home() {
   const notify = (message: string) => setToast(message);
 
   const openStage = (next: Stage) => {
+    setDockOpen(false);
     setIdeaMenuOpen(false);
     setMaterialUploadMenuOpen(false);
     setStage(next);
@@ -4743,12 +4755,13 @@ export default function Home() {
                       </small>
                     </span>
                   </div>
-                  <div className="dock-add-wrap">
+                  <div className="dock-add-wrap" ref={dockAddRef}>
                     <button
                       className="add-reference-button"
                       type="button"
                       onClick={() => setDockOpen((current) => !current)}
                       aria-expanded={dockOpen}
+                      aria-haspopup="menu"
                     >
                       <Plus size={18} /> {tr(language, "Add", "添加")}
                       <ChevronDown size={14} />
