@@ -1,4 +1,4 @@
-# Development & architecture
+# Developer guide
 
 For the visual tour and edition setup, see the [main README](../README.md).
 
@@ -57,7 +57,7 @@ facts from proposed recipe experiments and does not promise unverified shelf lif
 
 ## Visual system
 
-The implementation follows [`DESIGN_STYLE.md`](../DESIGN_STYLE.md) without
+The implementation follows [`DESIGN_STYLE.md`](DESIGN_STYLE.md) without
 copying any existing game. The original motif is a riverside pastry workshop
 beside a small orchard.
 
@@ -127,7 +127,7 @@ beside a small orchard.
 Requirements: Node.js `>=22.13.0`.
 
 ```bash
-npm install
+npm ci
 npm run dev
 npm run lint
 npm run build
@@ -136,3 +136,25 @@ node --test tests/rendered-html.test.mjs
 
 The deployed build uses vinext and the existing Sites configuration in
 `.openai/hosting.json`.
+
+## Security & credentials
+
+Workspace content is stored in **IndexedDB**, with a `localStorage` fallback. Export important projects as JSON for a portable backup. AI actions send the relevant input to the configured provider; local storage does not mean every feature works offline.
+
+On `openai`, **`.openai/hosting.json` is a non-secret hosting manifest**. It currently contains a Sites project identifier and empty `d1` / `r2` bindings — no API key, password, or access token. The Sites build reads this file, so it stays tracked. It is absent from the `vps` branch. Keep credentials in runtime secrets or ignored local configuration, never in this manifest.
+
+On `vps`, the API base URL stays in `localStorage`, while the key stays in tab `sessionStorage` and is excluded from workspace exports. Browser storage does not hide a key from scripts running in that browser. OpenAI recommends keeping API keys on the server; this edition deliberately uses a personal bring-your-own-key connection. For a shared public service using an owner-funded key, choose the Sites edition with a server-side secret. See [OpenAI’s authentication guidance](https://developers.openai.com/api/reference/overview#authentication).
+
+The repository’s ignore rules exclude common secret files, local databases, uploads, exports, logs, and build output. Only sanitized `*.example` configuration templates belong in Git. Review staged changes before pushing; adding an ignore rule does not remove files already in history.
+
+
+## OpenAI Sites setup
+
+This branch uses Next.js App Router conventions compiled by vinext/Vite for a Cloudflare Worker, with the repository’s Sites integration.
+
+1. Provision a Sites project for your deployment. When cloning this repository into a separate project, use the hosting manifest generated for that new project; the existing manifest identifies this repository’s deployment.
+2. Bind `OPENAI_API_KEY` as a secret in the Sites server runtime. The server routes read the binding; visitors never receive it. API usage belongs to the owner’s configured account.
+3. For local development, provide the key through the server environment or an ignored `.dev.vars` file. Never put it in `NEXT_PUBLIC_*` or `VITE_*` variables.
+4. Run `npm run lint` and `npm test` before publishing through the Sites workflow. `npm test` runs the build and Node tests without a real provider key.
+
+For a static VPS deployment, use the `vps` branch. The Sites Worker build is not a static-site deployment artifact.

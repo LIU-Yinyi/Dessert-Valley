@@ -8,10 +8,54 @@
 <p align="center">
   <a href="https://github.com/LIU-Yinyi/Dessert-Valley/tree/openai">☁️ OpenAI Sites edition</a> ·
   <a href="https://github.com/LIU-Yinyi/Dessert-Valley/tree/vps">🏡 VPS edition</a> ·
-  <a href="#quick-start">🚀 Get started</a>
+  <a href="#quick-start">🚀 Quick setup</a> ·
+  <a href="#quick-manual">🧑‍🍳 Quick manual</a>
 </p>
 
 > ☁️ **You’re on `openai` — the OpenAI Sites edition.** The site owner binds the OpenAI key on the server. Looking to run your own static site or VPS? [Switch to `vps` →](https://github.com/LIU-Yinyi/Dessert-Valley/tree/vps)
+
+<a id="quick-start"></a>
+
+## 🚀 Quick setup
+
+**Using an existing site?** Open its link and start with **Idea**. The owner supplies the OpenAI connection; visitors do not enter an API key.
+
+**Setting up your own site?** Bind `OPENAI_API_KEY` as a **server-side secret** in OpenAI Sites, then publish this branch through the Sites workflow. Keep the key out of browser code and source control. [Sites configuration and deployment details →](docs/DEVELOP.md#openai-sites-setup)
+
+To try the project locally, install **Node.js ≥ 22.13.0** and run:
+
+```bash
+git clone --branch openai https://github.com/LIU-Yinyi/Dessert-Valley.git
+cd Dessert-Valley
+npm ci
+npm run dev
+```
+
+Supply the local server’s `OPENAI_API_KEY` through its environment or an ignored `.dev.vars` file to enable AI features.
+
+<a id="quick-manual"></a>
+
+## 🧑‍🍳 Your first dessert · quick manual
+
+1. **🌱 Idea — catch a spark.** Write a dessert brief or record a voice note. Attach up to four reference images, then choose **Add to gallery**. Review the suggested name, description, and tags.
+2. **🎨 Design — shape the look.** Open a card’s **Design Dock**. Combine its brief with text, images, or canvas sketches, choose **Exterior** or **Cutaway**, and select **Product rendering**. Save a result you like, or choose **Save & build recipe** to continue.
+3. **🍰 Product — build the recipe.** Add optional size variants, enter or import materials, and organize making steps with images. Variant quantities update from the base amounts; units can be weights, pieces, bars, or your own labels.
+4. **🧑‍🍳 Bake — plan & serve.** In **For chefs**, add batches, choose sizes and quantities, and enter ingredient prices. In **For diners**, select desserts, set the handbook style and page count, then generate and export your menu as images, HTML, or print/PDF.
+
+### 🖼️ The workflow at a glance
+
+<table>
+  <tr>
+    <td width="50%"><strong>🌱 01 · Idea — gather</strong><p>Collect a direction and browse your dessert garden.</p><a href="docs/readme/stage-idea.png"><img src="docs/readme/stage-idea.png" alt="Idea gallery with jasmine, strawberry and pistachio dessert concept cards"></a></td>
+    <td width="50%"><strong>🎨 02 · Design — shape</strong><p>Bring references together and explore a product rendering.</p><a href="docs/readme/stage-design.png"><img src="docs/readme/stage-design.png" alt="Design Dock with a text brief, reference image and moonlit jasmine dessert rendering"></a></td>
+  </tr>
+  <tr>
+    <td><strong>🍰 03 · Product — build</strong><p>Turn the design into materials and scaled size variants.</p><a href="docs/readme/stage-product.png"><img src="docs/readme/stage-product.png" alt="Product material table with automatically scaled classic and petite quantities"></a></td>
+    <td><strong>🧑‍🍳 04 · Bake — make</strong><p>Plan batches and consolidate ingredients for bake day.</p><a href="docs/readme/stage-bake.png"><img src="docs/readme/stage-bake.png" alt="Bake workspace with two production batches, consolidated materials and an ingredient cost estimate"></a></td>
+  </tr>
+</table>
+
+<sub>Selected-area browser captures of an illustrative workspace using the bundled sample artwork. Quantities are demonstration data, not a tested recipe. Click a panel to inspect it at full size.</sub>
 
 ## 🍎 From a little idea to Oli’s dessert table
 
@@ -31,93 +75,28 @@ A glossy **Yogurt Tanghulu · 酸奶苹果糖葫芦** becomes the star of a warm
 
 You can also explore these examples in the app’s **🖼️ Masterpiece gallery**: zoom, pan, and compare them side by side on a wide screen, or swipe between them on mobile.
 
-## 🪄 A small atelier, from inspiration to serving
+## 🧺 Everyday tools
 
-- **🌱 Catch the spark.** Write a brief, turn voice notes into editable text, and attach up to four reference images. AI helps shape a title, description, tags, and cover selection.
-- **🎨 Give it a shape.** Gather text, images, and canvas sketches in the Design Dock. Explore exterior and cutaway renderings from the same intent package.
-- **⚖️ Build the recipe.** Create size variants, scale materials, import ingredients, and organize illustrated making steps. Work in weight, pieces, bars, or your own units.
-- **🧑‍🍳 Plan the bake.** Set batch quantities, consolidate ingredients, enter unit prices, and estimate ingredient costs.
-- **📖 Set the table.** Compose a diner handbook with a chosen style and page count, then export images, HTML, or print/PDF.
-- **💬 Ask Muse.** Get stage-aware advice with curated references while keeping control of your workspace. Switch the whole interface between English and Chinese.
-- **💾 Keep your notebook.** Save locally in your browser and import/export workspace JSON to carry your ideas elsewhere.
+- **💬 Ask Muse** for help at any stage. It uses your current brief and curated references, offers suggestions, and leaves your workspace in your control.
+- **🌏 English / 中文** switches the whole interface using the language button in the navigation.
+- **💾 Export / Import** saves and restores workspace JSON. Your notebook is stored in this browser, so export a backup before clearing browser data or moving to another device.
+- **🔐 Your connection** is used when you request AI help. Relevant inputs go to the configured provider. On VPS, your key stays in this tab’s `sessionStorage` and is excluded from workspace exports; it remains accessible to browser scripts, so use only a connection you trust.
 
-## 🧭 Four stops along the river
+## 🏡 Choose your edition
 
-<table>
-  <tr>
-    <td width="50%"><strong>🌱 01 · Idea — gather</strong><p>Collect a direction and browse your dessert garden.</p><a href="docs/readme/stage-idea.png"><img src="docs/readme/stage-idea.png" alt="Idea gallery with jasmine, strawberry and pistachio dessert concept cards"></a></td>
-    <td width="50%"><strong>🎨 02 · Design — shape</strong><p>Bring references together and explore a product rendering.</p><a href="docs/readme/stage-design.png"><img src="docs/readme/stage-design.png" alt="Design Dock with a text brief, reference image and moonlit jasmine dessert rendering"></a></td>
-  </tr>
-  <tr>
-    <td><strong>🍰 03 · Product — build</strong><p>Turn the design into materials and scaled size variants.</p><a href="docs/readme/stage-product.png"><img src="docs/readme/stage-product.png" alt="Product material table with automatically scaled classic and petite quantities"></a></td>
-    <td><strong>🧑‍🍳 04 · Bake — make</strong><p>Plan batches and consolidate ingredients for bake day.</p><a href="docs/readme/stage-bake.png"><img src="docs/readme/stage-bake.png" alt="Bake workspace with two production batches, consolidated materials and an ingredient cost estimate"></a></td>
-  </tr>
-</table>
+Both branches share the same dessert workflow, bilingual interface, Muse, gallery, and notebook tools.
 
-<sub>Selected-area browser captures of an illustrative workspace using the bundled sample artwork. Quantities are demonstration data, not a tested recipe. Click a panel to inspect it at full size.</sub>
-
-## 🏡 Two homes for the same atelier
-
-The dessert workflow, Muse, bilingual interface, and workspace tools are shared. Hosting and API-key handling differ:
-
-| | ☁️ `openai` · OpenAI Sites | 🏡 `vps` · Self-hosted |
+| | ☁️ OpenAI Sites · `openai` | 🏡 Self-hosted · `vps` |
 | :-- | :-- | :-- |
-| **Host** | OpenAI Sites, with server routes in a Worker | Any static host or your VPS; optional Nginx container |
-| **API key** | The owner binds `OPENAI_API_KEY` as a server-side Sites secret | Each user enters an API base URL and key with the **🔑 button at the top-left**, beside the logo |
-| **AI requests** | Browser → app server → OpenAI | Browser → configured OpenAI-compatible API |
-| **Visitor setup** | No visitor API-key entry | Configure a connection before using AI features |
-| **Key storage** | Server runtime secret; never sent to the browser | This tab’s `sessionStorage`; separate from workspace data |
-| **Provider requirement** | The configured OpenAI account supports the app’s models | Compatible Responses, Images and Audio Transcriptions endpoints, with browser **CORS** support |
+| **Where it runs** | OpenAI Sites | Your VPS or another static host |
+| **Who supplies the key** | The site owner binds it as a server secret | Each user enters a compatible API connection |
+| **What visitors do** | Open the site and start creating | Click **🔑 at the top-left**, save the connection, then start creating |
 
-<a id="quick-start"></a>
+## 🌾 Docs & credits
 
-## 🚀 Start the OpenAI Sites edition
-
-Requires **Node.js ≥ 22.13.0** and npm.
-
-```bash
-git clone --branch openai https://github.com/LIU-Yinyi/Dessert-Valley.git
-cd Dessert-Valley
-npm ci
-npm run dev
-```
-
-### ☁️ Connect the site to OpenAI
-
-Bind **`OPENAI_API_KEY`** as a secret in the Sites server runtime for the deployment. The app’s server routes read that binding and make the provider requests; visitors do not enter or receive the owner’s key. The deployment’s AI requests use the owner’s configured account.
-
-For local development, supply `OPENAI_API_KEY` through the server environment or an ignored `.dev.vars` file. Never use a `NEXT_PUBLIC_*` or `VITE_*` variable for this secret.
-
-This branch builds with **vinext** and the existing Sites integration. Its `.openai/hosting.json` identifies this repository’s Sites project. When creating a separate deployment, provision your own Sites project and use its generated hosting manifest; copying this repository does not grant access to the existing project.
-
-### 🧪 Build & development checks
-
-```bash
-npm run lint
-npm test
-```
-
-`npm test` runs the Sites build and Node test suite. You can also run `npm run build` separately. No real API key is required for these checks.
-
-Use the Sites publishing workflow for deployment. For an ordinary static web server or VPS, use the [`vps` branch](https://github.com/LIU-Yinyi/Dessert-Valley/tree/vps) and its Docker/static-host instructions.
-
-## 🔐 Your workspace & your keys
-
-Workspace content is stored in **IndexedDB**, with a `localStorage` fallback. Export important projects as JSON for a portable backup. AI actions send the relevant input to the configured provider; local storage does not mean every feature works offline.
-
-On `openai`, **`.openai/hosting.json` is a non-secret hosting manifest**. It currently contains a Sites project identifier and empty `d1` / `r2` bindings — no API key, password, or access token. The Sites build reads this file, so it stays tracked. It is absent from the `vps` branch. Keep credentials in runtime secrets or ignored local configuration, never in this manifest.
-
-On `vps`, the API base URL stays in `localStorage`, while the key stays in tab `sessionStorage` and is excluded from workspace exports. Browser storage does not hide a key from scripts running in that browser. OpenAI recommends keeping API keys on the server; this edition deliberately uses a personal bring-your-own-key connection. For a shared public service using an owner-funded key, choose the Sites edition with a server-side secret. See [OpenAI’s authentication guidance](https://developers.openai.com/api/reference/overview#authentication).
-
-The repository’s ignore rules exclude common secret files, local databases, uploads, exports, logs, and build output. Only sanitized `*.example` configuration templates belong in Git. Review staged changes before pushing; adding an ignore rule does not remove files already in history.
-
-## 🌾 Behind the scenery
-
-Built with **React 19 · TypeScript · Vite**, with parchment panels, timber frames, orchard greens, and keyboard-friendly controls. The original riverside atelier visual system is documented in [DESIGN_STYLE.md](DESIGN_STYLE.md).
-
-- 🛠️ [Development, architecture & operational notes](docs/DEVELOPMENT.md)
-- 🎨 [Artwork credits & cover-generation prompt](docs/readme/ARTWORK.md)
+- 🛠️ [Developer guide](docs/DEVELOP.md) — architecture, tests, deployment, and key handling
+- 🎨 [Design style](docs/DESIGN_STYLE.md) — the original riverside atelier visual system
 - 🖼️ Dessert design and menu examples: **Oli**
-- ✨ Cover: original artwork generated with **GPT Image** for Dessert Valley
+- ✨ Cover: original artwork generated with **GPT Image**. [Artwork credits & generation prompt →](docs/readme/ARTWORK.md)
 
 <p align="center">🌷 Made for small ideas, beautiful desserts, and the joy of making things.</p>
