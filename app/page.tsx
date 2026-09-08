@@ -1,6 +1,3 @@
-"use client";
-
-import NextImage, { type ImageProps } from "next/image";
 import {
   ArrowRight,
   AudioLines,
@@ -17,8 +14,12 @@ import {
   FileCode2,
   FileImage,
   FileText,
+  Eye,
+  EyeOff,
   ImagePlus,
+  Images,
   Import,
+  KeyRound,
   Layers3,
   Languages,
   LoaderCircle,
@@ -27,7 +28,6 @@ import {
   Pencil,
   Plus,
   Redo2,
-  Send,
   Sparkles,
   Square,
   Sprout,
@@ -42,16 +42,43 @@ import {
 import {
   ChangeEvent,
   CSSProperties,
+  ImgHTMLAttributes,
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import IdeaAudioInput from "./idea-audio-input";
+import GalleryImageViewer from "./gallery-image-viewer";
+import MaterialUnitInput from "./material-unit-input";
+import MuseAdviser from "./muse-adviser";
+import { normalizeMuseContext } from "./muse-context";
+import { compatibleMaterialPrice, consolidateMaterials, convertMaterialAmount, materialGroupKey, normalizeMaterialUnit } from "./material-units";
 import {
-  ensureWorkspaceCookie,
-  hasWorkspaceCookie,
+  MAX_IDEA_IMAGES,
+  MAX_IDEA_TEXT_LENGTH,
+  normalizeIdeaAttachments,
+  structureIdea,
+  type IdeaAttachment,
+} from "./idea-input";
+import {
+  clearBrowserApiConfig,
+  generateHandbook as generateHandbookPages,
+  generateProductRendering,
+  importMaterials,
+  isBrowserApiConfigured,
+  loadBrowserApiConfig,
+  normalizeApiBaseUrl,
+  requestPlanAdvice,
+  saveBrowserApiConfig,
+  transcribeAudioToText,
+  type BrowserApiConfig,
+  BrowserApiError,
+} from "./browser-ai";
+import {
   readWorkspace,
   WORKSPACE_STORAGE_VERSION,
   writeWorkspace,
@@ -143,6 +170,7 @@ type WorkspaceData = {
   ideaText: string;
   ideaImage: string;
   ideaImageName: string;
+  ideaImages?: IdeaAttachment[];
   referencePackages: Record<number, DesignReference[]>;
   viewStyle: ViewStyle;
   renderResults: Record<number, RenderResult | null>;
@@ -177,7 +205,7 @@ const seedIdeas: IdeaCard[] = [
     title: "Moonlit Jasmine Cloud",
     prompt:
       "A small moon-shaped jasmine mousse with fresh pear, a translucent tea veil and tiny sugar stars.",
-    image: "/renderings/moonlit-jasmine-hero.jpg",
+    image: "./renderings/moonlit-jasmine-hero.jpg",
     imageName: "moonlit-jasmine-reference.jpg",
     tags: ["jasmine", "pear", "pearl"],
   },
@@ -186,7 +214,7 @@ const seedIdeas: IdeaCard[] = [
     title: "Strawberry Picnic Box",
     prompt:
       "A single-serve strawberry shortcake that opens like a tiny gingham picnic hamper.",
-    image: "/renderings/strawberry-picnic-hero.jpg",
+    image: "./renderings/strawberry-picnic-hero.jpg",
     imageName: "strawberry-picnic-reference.jpg",
     tags: ["berry", "playful", "giftable"],
   },
@@ -195,7 +223,7 @@ const seedIdeas: IdeaCard[] = [
     title: "Pistachio Garden",
     prompt:
       "A petite pistachio entremet with chamomile flowers, soft moss texture and a honey centre.",
-    image: "/renderings/pistachio-garden-hero.jpg",
+    image: "./renderings/pistachio-garden-hero.jpg",
     imageName: "pistachio-garden-reference.jpg",
     tags: ["pistachio", "botanical", "honey"],
   },
@@ -205,20 +233,20 @@ const products = {
   moon: {
     name: "Moonlit Jasmine Cloud",
     alias: "MJC",
-    image: "/renderings/moonlit-jasmine-hero.jpg",
-    cutaway: "/renderings/moonlit-jasmine-cutaway.jpg",
+    image: "./renderings/moonlit-jasmine-hero.jpg",
+    cutaway: "./renderings/moonlit-jasmine-cutaway.jpg",
   },
   berry: {
     name: "Strawberry Picnic Box",
     alias: "SPB",
-    image: "/renderings/strawberry-picnic-hero.jpg",
-    cutaway: "/renderings/strawberry-picnic-hero.jpg",
+    image: "./renderings/strawberry-picnic-hero.jpg",
+    cutaway: "./renderings/strawberry-picnic-hero.jpg",
   },
   garden: {
     name: "Pistachio Garden",
     alias: "PG",
-    image: "/renderings/pistachio-garden-hero.jpg",
-    cutaway: "/renderings/pistachio-garden-hero.jpg",
+    image: "./renderings/pistachio-garden-hero.jpg",
+    cutaway: "./renderings/pistachio-garden-hero.jpg",
   },
 } as const;
 
@@ -268,7 +296,7 @@ function ideaAlias(idea: IdeaCard, index: number) {
 function materialKey(name: string, unit: string) {
   const normalize = (value: string) =>
     value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
-  return `${normalize(name)}::${normalize(unit)}`;
+  return `${normalize(name)}::${normalizeMaterialUnit(unit)}`;
 }
 
 function materialAmount(value: string) {
@@ -278,7 +306,7 @@ function materialAmount(value: string) {
 
 function formatMaterialAmount(value: number, language: Language) {
   return new Intl.NumberFormat(language === "zh" ? "zh-CN" : "en", {
-    maximumFractionDigits: Math.abs(value) < 1 ? 3 : 2,
+    maximumFractionDigits: 9,
   }).format(value);
 }
 
@@ -291,6 +319,12 @@ const referenceMeta: Record<
   image: { label: "Image", helper: "Add a photo, collage or visual sample", icon: ImagePlus },
   canvas: { label: "Canvas", helper: "Draw a fresh sketch on an empty canvas", icon: Pencil },
 };
+
+const addableReferenceKinds = [
+  "text",
+  "image",
+  "canvas",
+] as const satisfies readonly ReferenceKind[];
 
 const stageCopy: Record<
   Language,
@@ -333,8 +367,8 @@ function cn(...values: Array<string | false | null | undefined>) {
 }
 
 type WorkspaceImageProps = Omit<
-  ImageProps,
-  "height" | "unoptimized" | "width"
+  ImgHTMLAttributes<HTMLImageElement>,
+  "height" | "width"
 > & {
   portrait?: boolean;
 };
@@ -345,26 +379,17 @@ function WorkspaceImage({
   ...props
 }: WorkspaceImageProps) {
   return (
-    <NextImage
+    <img
       {...props}
       alt={alt}
       width={portrait ? 1024 : 960}
       height={portrait ? 1536 : 720}
-      unoptimized
     />
   );
 }
 
 function tr(language: Language, english: string, chinese: string) {
   return language === "zh" ? chinese : english;
-}
-
-function agentGreeting(language: Language) {
-  return tr(
-    language,
-    "Hello! Ask about texture, temperature, substitutions or workflow.",
-    "你好！可以询问质地、温度、替代材料或制作流程。"
-  );
 }
 
 function applyStateUpdate<T>(current: T, update: StateUpdate<T>) {
@@ -521,6 +546,7 @@ function createSeedWorkspaceData(): WorkspaceData {
     ideaText: "",
     ideaImage: "",
     ideaImageName: "",
+    ideaImages: [],
     referencePackages: Object.fromEntries(
       ideas.map((idea) => [idea.id, inheritedReferences(idea)])
     ),
@@ -740,6 +766,7 @@ function migrateWorkspaceData(
         );
   const migrated = {
     ...value,
+    ideaImages: normalizeIdeaAttachments(value.ideaImages, value.ideaImage, value.ideaImageName),
     productionRows,
     materialPrices: normalizeMaterialPrices(value.materialPrices),
     handbookPageCount:
@@ -964,6 +991,323 @@ function useDialogFocus(onClose: () => void) {
   }, [onClose]);
 
   return dialogRef;
+}
+
+function ApiSettingsDialog({
+  initialConfig,
+  language,
+  onClose,
+  onSave,
+  onClear,
+}: {
+  initialConfig: BrowserApiConfig;
+  language: Language;
+  onClose: () => void;
+  onSave: (config: BrowserApiConfig) => BrowserApiConfig;
+  onClear: () => void;
+}) {
+  const [baseUrl, setBaseUrl] = useState(initialConfig.baseUrl);
+  const [secretKey, setSecretKey] = useState(initialConfig.secretKey);
+  const [showSecret, setShowSecret] = useState(false);
+  const [error, setError] = useState("");
+  const [cleared, setCleared] = useState(false);
+  const dialogRef = useDialogFocus(onClose);
+
+  const save = () => {
+    setError("");
+    setCleared(false);
+    try {
+      const saved = onSave({
+        baseUrl: normalizeApiBaseUrl(baseUrl),
+        secretKey,
+      });
+      setBaseUrl(saved.baseUrl);
+      setSecretKey(saved.secretKey);
+      onClose();
+    } catch (caughtError) {
+      const code =
+        caughtError instanceof BrowserApiError
+          ? caughtError.code
+          : "browser_storage_unavailable";
+      setError(
+        code === "invalid_api_url"
+          ? tr(
+              language,
+              "Enter a complete HTTP or HTTPS API base URL without query parameters.",
+              "请输入完整的 HTTP 或 HTTPS API 基础 URL，且不要包含查询参数。"
+            )
+          : code === "missing_secret_key"
+            ? tr(
+                language,
+                "Enter the secret key used by this API.",
+                "请输入此 API 使用的 Secret Key。"
+              )
+            : tr(
+                language,
+                "This browser blocked API settings storage.",
+                "浏览器阻止了 API 设置的保存。"
+              )
+      );
+    }
+  };
+
+  const clear = () => {
+    onClear();
+    setBaseUrl("");
+    setSecretKey("");
+    setShowSecret(false);
+    setError("");
+    setCleared(true);
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section
+        ref={dialogRef}
+        className="pixel-modal api-settings-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="api-settings-title"
+        aria-describedby="api-settings-description"
+      >
+        <header className="modal-header">
+          <div className="modal-icon api"><KeyRound size={18} /></div>
+          <div>
+            <span className="micro-label">
+              {tr(language, "Browser connection", "浏览器连接")}
+            </span>
+            <h2 id="api-settings-title">
+              {tr(language, "Model API settings", "模型 API 设置")}
+            </h2>
+          </div>
+          <button
+            className="square-button"
+            type="button"
+            onClick={onClose}
+            aria-label={tr(language, "Close API settings", "关闭 API 设置")}
+          >
+            <X size={16} />
+          </button>
+        </header>
+        <div className="modal-body api-settings-body">
+          <p id="api-settings-description" className="api-settings-intro">
+            {tr(
+              language,
+              "Dessert Valley sends every AI request directly from this browser to your OpenAI-compatible endpoint. The site has no AI proxy or application server.",
+              "Dessert Valley 会从此浏览器直接向你填写的 OpenAI 兼容端点发送全部 AI 请求；网站不使用 AI 代理或应用服务端。"
+            )}
+          </p>
+          <label className="field">
+            <span>{tr(language, "API base URL", "API 基础 URL")}</span>
+            <input
+              type="url"
+              inputMode="url"
+              value={baseUrl}
+              onChange={(event) => {
+                setBaseUrl(event.target.value);
+                setError("");
+                setCleared(false);
+              }}
+              placeholder="https://api.openai.com/v1"
+              autoComplete="url"
+              spellCheck={false}
+            />
+            <small>
+              {tr(
+                language,
+                "Include the API version path, usually /v1. The provider must allow browser CORS requests.",
+                "请包含 API 版本路径（通常为 /v1），且服务商必须允许浏览器跨域请求（CORS）。"
+              )}
+            </small>
+          </label>
+          <label className="field">
+            <span>{tr(language, "Secret key", "Secret Key")}</span>
+            <span className="api-secret-field">
+              <input
+                type={showSecret ? "text" : "password"}
+                value={secretKey}
+                onChange={(event) => {
+                  setSecretKey(event.target.value);
+                  setError("");
+                  setCleared(false);
+                }}
+                placeholder="sk-…"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <button
+                className="square-button mini"
+                type="button"
+                onClick={() => setShowSecret((current) => !current)}
+                aria-label={tr(
+                  language,
+                  showSecret ? "Hide secret key" : "Show secret key",
+                  showSecret ? "隐藏 Secret Key" : "显示 Secret Key"
+                )}
+              >
+                {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </span>
+            <small>
+              {tr(
+                language,
+                "The key is kept only in this tab's session storage and is never included in workspace exports.",
+                "密钥只保存在当前标签页的会话存储中，绝不会写入工作区导出文件。"
+              )}
+            </small>
+          </label>
+          <div className="api-compatibility-note">
+            <KeyRound size={16} aria-hidden="true" />
+            <span>
+              <strong>
+                {tr(language, "Compatible API required", "需要兼容的 API")}
+              </strong>
+              <small>
+                {tr(
+                  language,
+                  "The configured service must support Responses, Images (generation and edit), and Audio Transcriptions endpoints for every feature to work.",
+                  "若要使用全部功能，配置的服务需支持 Responses、Images（生成与编辑）以及 Audio Transcriptions 端点。"
+                )}
+              </small>
+            </span>
+          </div>
+          {error && <p className="field-error" role="alert">{error}</p>}
+          {cleared && (
+            <p className="api-settings-cleared" role="status">
+              <Check size={14} />
+              {tr(language, "API settings cleared.", "API 设置已清除。")}
+            </p>
+          )}
+        </div>
+        <footer className="modal-footer api-settings-footer">
+          <button
+            className="button ghost danger-text"
+            type="button"
+            onClick={clear}
+            disabled={!baseUrl && !secretKey}
+          >
+            <Trash2 size={15} />
+            {tr(language, "Clear settings", "清除设置")}
+          </button>
+          <span />
+          <button className="button ghost" type="button" onClick={onClose}>
+            {tr(language, "Cancel", "取消")}
+          </button>
+          <button
+            className="button primary"
+            type="button"
+            onClick={save}
+            disabled={!baseUrl.trim() || !secretKey.trim()}
+          >
+            <Check size={15} />
+            {tr(language, "Save connection", "保存连接")}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function MasterpieceGallery({ language, onClose }: {
+  language: Language;
+  onClose: () => void;
+}) {
+  const dialogRef = useDialogFocus(onClose);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [activeImage, setActiveImage] = useState(0);
+  const exhibits = [
+    {
+      src: "./gallery/oli-design.jpg",
+      width: 1284,
+      height: 2506,
+      label: tr(language, "Design", "设计"),
+      title: tr(language, "Yogurt Tanghulu", "酸奶糖葫芦"),
+      alt: tr(language, "Oli's Dessert Valley design: a glossy red apple-shaped yogurt dessert with a little face.", "Oli 的甜点谷设计：带有可爱表情的亮红色苹果造型酸奶甜点。"),
+      icon: Pencil,
+    },
+    {
+      src: "./gallery/oli-menu.jpg",
+      width: 1024,
+      height: 1536,
+      label: tr(language, "Menu", "菜单"),
+      title: tr(language, "Oli's dessert collection", "Oli 的甜点集"),
+      alt: tr(language, "Oli's illustrated menu with coconut mousse, yogurt tanghulu, little tiger espresso, Cinnamoroll canelé, and butter cookies.", "Oli 的手绘风菜单：海豹椰子酸奶慕斯、酸奶苹果糖葫芦、小脑斧意式咖啡、玉桂狗可露丽和小丸子黄油饼干。"),
+      icon: BookOpen,
+    },
+  ];
+
+  const showImage = (index: number) => {
+    const track = trackRef.current;
+    if (!track || track.scrollWidth <= track.clientWidth) return;
+    const next = Math.max(0, Math.min(exhibits.length - 1, index));
+    track.scrollTo({
+      left: next * (track.scrollWidth - track.clientWidth),
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+    setActiveImage(next);
+  };
+
+  return (
+    <div className="modal-backdrop masterpiece-backdrop" role="presentation"
+      onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section ref={dialogRef} className="pixel-modal masterpiece-modal" role="dialog" aria-modal="true"
+        aria-labelledby="masterpiece-gallery-title" aria-describedby="masterpiece-gallery-credit">
+        <header className="modal-header masterpiece-heading">
+          <span className="modal-icon"><Images size={22} aria-hidden="true" /></span>
+          <div>
+            <span className="masterpiece-eyebrow">Dessert Valley</span>
+            <h2 id="masterpiece-gallery-title">{tr(language, "Masterpiece gallery", "甜点作品画廊")}</h2>
+          </div>
+          <button className="square-button" type="button" onClick={onClose}
+            aria-label={tr(language, "Close gallery", "关闭画廊")}><X size={20} /></button>
+        </header>
+        <div className="masterpiece-body">
+          <div className="masterpiece-track" ref={trackRef} tabIndex={0}
+            role="region" aria-label={tr(language, "Design and menu showcase", "设计与菜单作品展示")}
+            onScroll={(event) => {
+              const track = event.currentTarget;
+              const maximum = track.scrollWidth - track.clientWidth;
+              if (maximum > 0) setActiveImage(track.scrollLeft >= maximum / 2 ? 1 : 0);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                event.preventDefault();
+                showImage(activeImage + (event.key === "ArrowRight" ? 1 : -1));
+              }
+            }}>
+            {exhibits.map((exhibit, index) => {
+              const Icon = exhibit.icon;
+              return (
+                <figure className="masterpiece-item" key={exhibit.src}>
+                  <div className="masterpiece-frame">
+                    <GalleryImageViewer src={exhibit.src} alt={exhibit.alt} width={exhibit.width} height={exhibit.height}
+                      language={language} />
+                  </div>
+                  <figcaption className="masterpiece-caption">
+                    <span className="masterpiece-number" aria-hidden="true">0{index + 1}</span>
+                    <div><h3>{exhibit.label}</h3><p>{exhibit.title}</p></div>
+                    <Icon size={21} aria-hidden="true" />
+                  </figcaption>
+                </figure>
+              );
+            })}
+          </div>
+          <div className="masterpiece-pagination" role="group" aria-label={tr(language, "Choose gallery image", "选择画廊图片")}>
+            {exhibits.map((exhibit, index) => (
+              <button type="button" key={exhibit.src} aria-pressed={activeImage === index} onClick={() => showImage(index)}>
+                <span aria-hidden="true">0{index + 1}</span> {exhibit.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <footer className="masterpiece-credit" id="masterpiece-gallery-credit">
+          <span className="masterpiece-signature">@Oli</span>
+          <span>{tr(language, "A girl who loves baking.", "一个热爱烘焙的女孩。")}</span>
+          <Sprout size={22} aria-hidden="true" />
+        </footer>
+      </section>
+    </div>
+  );
 }
 
 function CanvasPad({
@@ -1224,12 +1568,14 @@ function ReferenceEditor({
   onClose,
   onSave,
   language,
+  apiConfig,
 }: {
   kind: ReferenceKind;
   existing: DesignReference | null;
   onClose: () => void;
   onSave: (reference: DesignReference) => void;
   language: Language;
+  apiConfig: BrowserApiConfig;
 }) {
   const meta = referenceMeta[kind];
   const localizedMeta = referenceCopy[language][kind];
@@ -1244,51 +1590,183 @@ function ReferenceEditor({
   const [content, setContent] = useState(existing?.content ?? "");
   const [asset, setAsset] = useState(existing?.asset ?? "");
   const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [audioError, setAudioError] = useState("");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const recordingFailedRef = useRef(false);
+  const editorMountedRef = useRef(true);
   const dialogRef = useDialogFocus(onClose);
 
-  useEffect(
-    () => () => {
-      recorderRef.current?.stop();
+  useEffect(() => {
+    editorMountedRef.current = true;
+    return () => {
+      editorMountedRef.current = false;
+      recordingFailedRef.current = true;
+      const recorder = recorderRef.current;
+      if (recorder) {
+        recorder.ondataavailable = null;
+        recorder.onstop = null;
+        recorder.onerror = null;
+        if (recorder.state !== "inactive") recorder.stop();
+      }
       streamRef.current?.getTracks().forEach((track) => track.stop());
-    },
-    []
-  );
+      streamRef.current = null;
+      recorderRef.current = null;
+    };
+  }, []);
 
   const toggleRecording = async () => {
     if (recording) {
-      recorderRef.current?.stop();
-      setRecording(false);
+      const recorder = recorderRef.current;
+      if (recorder && recorder.state !== "inactive") recorder.stop();
       return;
     }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      chunksRef.current = [];
-      const recorder = new MediaRecorder(stream);
-      recorderRef.current = recorder;
-      recorder.ondataavailable = (event) => {
-        if (event.data.size) chunksRef.current.push(event.data);
-      };
-      recorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, {
-          type: recorder.mimeType || "audio/webm",
-        });
-        setAsset(await readFileAsDataUrl(new File([blob], "voice-note.webm")));
-        stream.getTracks().forEach((track) => track.stop());
-      };
-      recorder.start();
-      setAudioError("");
-      setRecording(true);
-    } catch {
+    if (transcribing) return;
+    if (kind === "text" && !isBrowserApiConfigured(apiConfig)) {
       setAudioError(
         tr(
           language,
-          "Microphone unavailable. You can upload an audio clip instead.",
-          "麦克风不可用，可改为上传音频文件。"
+          "Open Model API settings and enter your API URL and secret key before using Audio to Text.",
+          "使用语音转文字前，请先打开模型 API 设置并填写 API URL 和 Secret Key。"
+        )
+      );
+      return;
+    }
+    if (
+      typeof MediaRecorder === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      setAudioError(
+        tr(
+          language,
+          kind === "text"
+            ? "Audio recording is not supported in this browser."
+            : "Audio recording is not supported in this browser. Choose an audio file instead.",
+          kind === "text"
+            ? "此浏览器不支持音频录制。"
+            : "此浏览器不支持音频录制，请改为选择音频文件。"
+        )
+      );
+      return;
+    }
+
+    setAudioError("");
+    recordingFailedRef.current = false;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+      if (!editorMountedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      const requestedMimeType = preferredRecordingMimeType();
+      streamRef.current = stream;
+      const recorder = requestedMimeType
+        ? new MediaRecorder(stream, { mimeType: requestedMimeType })
+        : new MediaRecorder(stream);
+      chunksRef.current = [];
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        recordingFailedRef.current = true;
+        stream.getTracks().forEach((track) => track.stop());
+        if (!editorMountedRef.current) return;
+        setRecording(false);
+        setAudioError(
+          tr(
+            language,
+            "Recording stopped unexpectedly. Please try again.",
+            "录音意外停止，请重试。"
+          )
+        );
+      };
+      recorder.onstop = async () => {
+        const recordedMimeType = baseRecordingMimeType(
+          recorder.mimeType || requestedMimeType
+        );
+        const blob = new Blob(chunksRef.current, {
+          type: recordedMimeType,
+        });
+        stream.getTracks().forEach((track) => track.stop());
+        if (streamRef.current === stream) streamRef.current = null;
+        if (recorderRef.current === recorder) recorderRef.current = null;
+        if (!editorMountedRef.current) return;
+        setRecording(false);
+        if (recordingFailedRef.current) return;
+        if (blob.size === 0) {
+          setAudioError(
+            tr(
+              language,
+              "No audio was captured. Check your microphone and record again.",
+              "没有录制到音频，请检查麦克风后重试。"
+            )
+          );
+          return;
+        }
+
+        const file = new File(
+          [blob],
+          recordingFilename(recordedMimeType),
+          { type: recordedMimeType }
+        );
+        if (kind === "text") setTranscribing(true);
+        try {
+          const dataUrl = await readFileAsDataUrl(file);
+          if (!editorMountedRef.current) return;
+          if (kind === "audio") {
+            setAsset(dataUrl);
+            return;
+          }
+
+          const transcript = await transcribeAudioToText(apiConfig, {
+            content: dataUrl,
+            filename: file.name,
+            mimeType: recordedMimeType,
+          });
+          if (!editorMountedRef.current) return;
+          setContent((current) => {
+            const draft = current.trimEnd();
+            return draft ? `${draft}\n${transcript}` : transcript;
+          });
+          setAudioError("");
+        } catch (caughtError) {
+          if (!editorMountedRef.current) return;
+          const code =
+            caughtError instanceof Error
+              ? caughtError.message
+              : "transcription_failed";
+          setAudioError(audioTranscriptionError(language, code));
+        } finally {
+          if (editorMountedRef.current) setTranscribing(false);
+        }
+      };
+      recorder.start(250);
+      setRecording(true);
+    } catch {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      recorderRef.current = null;
+      if (!editorMountedRef.current) return;
+      setRecording(false);
+      setAudioError(
+        tr(
+          language,
+          kind === "text"
+            ? "Microphone access was not granted. Allow access and try again."
+            : "Microphone access was not granted. Allow access or upload an audio clip instead.",
+          kind === "text"
+            ? "未获得麦克风权限，请允许访问后重试。"
+            : "未获得麦克风权限，请允许访问或改为上传音频文件。"
         )
       );
     }
@@ -1327,6 +1805,7 @@ function ReferenceEditor({
         role="dialog"
         aria-modal="true"
         aria-labelledby="reference-dialog-title"
+        aria-busy={transcribing}
       >
         <header className="modal-header">
           <div className="modal-icon"><meta.icon size={18} /></div>
@@ -1355,9 +1834,37 @@ function ReferenceEditor({
           </label>
 
           {kind === "text" && (
-            <label className="field">
-              <span>{tr(language, "Design direction", "设计方向")}</span>
+            <div className="field design-direction-field">
+              <div className="design-direction-heading">
+                <label htmlFor="reference-design-direction">
+                  {tr(language, "Design direction", "设计方向")}
+                </label>
+                <button
+                  className={cn(
+                    "audio-to-text-button",
+                    recording && "recording"
+                  )}
+                  type="button"
+                  onClick={toggleRecording}
+                  disabled={transcribing}
+                  aria-pressed={recording}
+                >
+                  {transcribing ? (
+                    <LoaderCircle className="spin" size={16} />
+                  ) : recording ? (
+                    <Square size={15} fill="currentColor" />
+                  ) : (
+                    <Mic size={16} />
+                  )}
+                  {transcribing
+                    ? tr(language, "Transcribing…", "正在转成文字……")
+                    : recording
+                      ? tr(language, "Stop & transcribe", "停止并转成文字")
+                      : tr(language, "Audio to Text", "语音转文字")}
+                </button>
+              </div>
               <textarea
+                id="reference-design-direction"
                 rows={7}
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
@@ -1368,7 +1875,36 @@ function ReferenceEditor({
                 )}
                 autoFocus
               />
-            </label>
+              <div
+                className="audio-to-text-feedback"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {recording && (
+                  <p className="recording-status">
+                    {tr(
+                      language,
+                      "Recording… Select “Stop & transcribe” when you finish.",
+                      "正在录音……结束时请选择“停止并转成文字”。"
+                    )}
+                  </p>
+                )}
+                {transcribing && (
+                  <p className="transcribing-status">
+                    {tr(
+                      language,
+                      "Sending this recording directly to your configured transcription API…",
+                      "正在从本浏览器将录音直接发送到你配置的转写 API……"
+                    )}
+                  </p>
+                )}
+                {audioError && (
+                  <p className="field-error" role="alert">
+                    {audioError}
+                  </p>
+                )}
+              </div>
+            </div>
           )}
 
           {kind === "image" && (
@@ -1410,6 +1946,8 @@ function ReferenceEditor({
                 className={cn("record-button", recording && "recording")}
                 type="button"
                 onClick={toggleRecording}
+                disabled={transcribing}
+                aria-pressed={recording}
               >
                 <Mic size={18} />
                 {recording
@@ -1456,7 +1994,11 @@ function ReferenceEditor({
             className="button primary"
             type="button"
             onClick={confirm}
-            disabled={kind === "text" ? !content.trim() : kind !== "audio" && !asset}
+            disabled={
+              recording ||
+              transcribing ||
+              (kind === "text" ? !content.trim() : kind !== "audio" && !asset)
+            }
           >
             <Check size={15} /> {tr(language, "Confirm reference", "确认参考")}
           </button>
@@ -1586,6 +2128,56 @@ function StepEditor({
   );
 }
 
+function audioTranscriptionError(language: Language, code?: string) {
+  if (code === "invalid_request") {
+    return tr(
+      language,
+      "The recording was empty, unsupported, or larger than 18 MB. Record a shorter direction and try again.",
+      "录音为空、格式不受支持或超过 18 MB，请缩短录音后重试。"
+    );
+  }
+  if (code === "not_configured") {
+    return tr(
+      language,
+      "Open Model API settings and enter your API URL and secret key first.",
+      "请先打开模型 API 设置，填写 API URL 和 Secret Key。"
+    );
+  }
+  if (code === "connection_failed" || code === "endpoint_not_found") {
+    return tr(
+      language,
+      "The browser could not reach the transcription API. Check the base URL and the provider's CORS settings.",
+      "浏览器无法访问转写 API，请检查基础 URL 和服务商的 CORS 设置。"
+    );
+  }
+  if (code === "rate_limit") {
+    return tr(
+      language,
+      "The transcription model is busy. Please try again shortly.",
+      "转写模型正忙，请稍后重试。"
+    );
+  }
+  if (code === "empty_transcription") {
+    return tr(
+      language,
+      "No speech was recognized. Record again in a quieter place.",
+      "没有识别到语音，请在更安静的环境中重新录制。"
+    );
+  }
+  if (code === "transcription_blocked") {
+    return tr(
+      language,
+      "This recording could not be transcribed.",
+      "无法转写这段录音。"
+    );
+  }
+  return tr(
+    language,
+    "The recording could not be transcribed. Please try again.",
+    "录音暂时无法转成文字，请重试。"
+  );
+}
+
 function materialImportError(language: Language, code?: string) {
   if (code === "request_too_large" || code === "invalid_request") {
     return tr(
@@ -1597,8 +2189,15 @@ function materialImportError(language: Language, code?: string) {
   if (code === "not_configured") {
     return tr(
       language,
-      "AI material import is not configured yet.",
-      "AI 材料导入功能尚未配置。"
+      "Open Model API settings and enter your API URL and secret key first.",
+      "请先打开模型 API 设置，填写 API URL 和 Secret Key。"
+    );
+  }
+  if (code === "connection_failed" || code === "endpoint_not_found") {
+    return tr(
+      language,
+      "The browser could not reach this API endpoint. Check the base URL and the provider's CORS settings.",
+      "浏览器无法访问此 API 端点，请检查基础 URL 和服务商的 CORS 设置。"
     );
   }
   if (code === "rate_limit") {
@@ -1686,13 +2285,17 @@ function formatRecordingTime(totalSeconds: number) {
 function MaterialImportDialog({
   kind,
   idea,
+  existingMaterialNames,
   language,
+  apiConfig,
   onClose,
   onApply,
 }: {
   kind: MaterialImportKind;
   idea: IdeaCard;
+  existingMaterialNames: string[];
   language: Language;
+  apiConfig: BrowserApiConfig;
   onClose: () => void;
   onApply: (rows: MaterialRow[]) => void;
 }) {
@@ -1979,11 +2582,11 @@ function MaterialImportDialog({
     setSummary("");
 
     try {
-      const response = await fetch("/api/material-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const payload = await importMaterials(
+        apiConfig,
+        {
           language,
+          existingMaterialNames,
           product: {
             title: idea.title,
             description: idea.prompt,
@@ -1995,22 +2598,10 @@ function MaterialImportDialog({
             filename,
             mimeType: kind === "text" ? "text/plain" : mimeType,
           },
-        }),
-      });
-      const payload = (await response.json().catch(() => null)) as
-        | {
-            summary?: string;
-            materials?: Array<{
-              name?: string;
-              amount?: string;
-              unit?: string;
-              note?: string;
-            }>;
-            error?: { code?: string };
-          }
-        | null;
+        }
+      );
       const importedRows: MaterialRow[] =
-        payload?.materials
+        payload.materials
           ?.filter(
             (material) =>
               typeof material.name === "string" && material.name.trim()
@@ -2024,11 +2615,11 @@ function MaterialImportDialog({
             note: typeof material.note === "string" ? material.note : "",
           })) ?? [];
 
-      if (!response.ok || !importedRows.length) {
-        throw new Error(payload?.error?.code || "import_failed");
+      if (!importedRows.length) {
+        throw new BrowserApiError("empty_import", 422);
       }
       setRows(importedRows);
-      setSummary(typeof payload?.summary === "string" ? payload.summary : "");
+      setSummary(typeof payload.summary === "string" ? payload.summary : "");
     } catch (caughtError) {
       const code =
         caughtError instanceof Error ? caughtError.message : "import_failed";
@@ -2377,12 +2968,11 @@ function MaterialImportDialog({
                     </label>
                     <label>
                       <span>{tr(language, "Unit", "单位")}</span>
-                      <input
+                      <MaterialUnitInput
                         value={row.unit}
-                        onChange={(event) =>
-                          updateRow(row.id, { unit: event.target.value })
-                        }
-                        aria-label={tr(
+                        onChange={(unit) => updateRow(row.id, { unit })}
+                        language={language}
+                        label={tr(
                           language,
                           `${row.name || `Material ${index + 1}`} unit`,
                           `${row.name || `第 ${index + 1} 项材料`}单位`
@@ -2674,13 +3264,25 @@ function IdeaDeleteDialog({
 
 export default function Home() {
   const [language, setLanguage] = useState<Language>("en");
+  const [apiConfig, setApiConfig] = useState<BrowserApiConfig>(() =>
+    loadBrowserApiConfig()
+  );
+  const [apiSettingsOpen, setApiSettingsOpen] = useState(false);
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
   const [stage, setStage] = useState<Stage>("idea");
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const closeGallery = useCallback(() => setGalleryOpen(false), []);
   const [ideas, setIdeas] = useState<IdeaCard[]>(seedIdeas);
   const [selectedIdeaId, setSelectedIdeaId] = useState(1);
   const [ideaText, setIdeaText] = useState("");
-  const [ideaImage, setIdeaImage] = useState("");
-  const [ideaImageName, setIdeaImageName] = useState("");
+  const [ideaImages, setIdeaImages] = useState<IdeaAttachment[]>([]);
+  const ideaImage = ideaImages[0]?.src ?? "";
+  const ideaImageName = ideaImages[0]?.name ?? "";
+  const [ideaAudioBusy, setIdeaAudioBusy] = useState(false);
+  const [ideaImagesLoading, setIdeaImagesLoading] = useState(false);
+  const [structuringIdea, setStructuringIdea] = useState(false);
+  const ideaSubmitting = useRef(false);
+  const ideaImageInput = useRef<HTMLInputElement>(null);
   const [ideaEditor, setIdeaEditor] = useState<IdeaCard | null>(null);
   const [ideaToDelete, setIdeaToDelete] = useState<IdeaCard | null>(null);
   const [referencePackages, setReferencePackages] = useState<
@@ -2713,9 +3315,6 @@ export default function Home() {
     useState<MaterialImportKind | null>(null);
   const [stepEditor, setStepEditor] = useState<PlanStep | "new" | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
-  const [agentInput, setAgentInput] = useState("");
-  const [agentMessages, setAgentMessages] = useState([agentGreeting("en")]);
-  const [agentAudioName, setAgentAudioName] = useState("");
   const [bakeMode, setBakeMode] = useState<"chef" | "diner">("chef");
   const [productionRows, setProductionRows] = useState<ProductionRow[]>(() =>
     seedProductionRows.map((row) => ({ ...row }))
@@ -2741,6 +3340,7 @@ export default function Home() {
   const [toast, setToast] = useState("");
   const importRef = useRef<HTMLInputElement | null>(null);
   const ideaSelectorRef = useRef<HTMLDivElement | null>(null);
+  const dockAddRef = useRef<HTMLDivElement | null>(null);
   const materialUploadRef = useRef<HTMLDivElement | null>(null);
   const handbookReferenceRef = useRef<HTMLInputElement | null>(null);
   const workspaceSaveWarningShown = useRef(false);
@@ -2759,6 +3359,7 @@ export default function Home() {
   const currentProduct = products[variant];
   const rendering = renderingDesignId === selectedIdea.id;
   const advisingPlan = advisingDesignId === selectedIdea.id;
+  const apiConfigured = isBrowserApiConfigured(apiConfig);
   const currentIntentSignature = designIntentSignature(
     selectedIdea,
     references
@@ -2873,16 +3474,6 @@ export default function Home() {
     if (storedLanguage === "en" || storedLanguage === "zh") {
       const timer = window.setTimeout(() => {
         setLanguage(storedLanguage);
-        setAgentMessages((current) =>
-          current.length === 1 &&
-          current.some(
-            (message) =>
-              message === agentGreeting("en") ||
-              message === agentGreeting("zh")
-          )
-            ? [agentGreeting(storedLanguage)]
-            : current
-        );
       }, 0);
       return () => window.clearTimeout(timer);
     }
@@ -2897,8 +3488,6 @@ export default function Home() {
     let cancelled = false;
 
     const hydrateWorkspace = async () => {
-      if (!hasWorkspaceCookie()) ensureWorkspaceCookie();
-
       try {
         const stored = await readWorkspace<unknown>();
         const migratedWorkspace = migrateWorkspaceData(
@@ -2925,8 +3514,7 @@ export default function Home() {
         setIdeas(workspace.ideas);
         setSelectedIdeaId(activeIdeaId);
         setIdeaText(workspace.ideaText);
-        setIdeaImage(workspace.ideaImage);
-        setIdeaImageName(workspace.ideaImageName);
+        setIdeaImages(normalizeIdeaAttachments(workspace.ideaImages, workspace.ideaImage, workspace.ideaImageName));
         setReferencePackages(workspace.referencePackages);
         setViewStyle(workspace.viewStyle);
         setRenderResults(workspace.renderResults);
@@ -2943,7 +3531,6 @@ export default function Home() {
         setWorkspaceHydrated(true);
       } catch {
         if (cancelled) return;
-        ensureWorkspaceCookie();
         setWorkspaceHydrated(true);
         setToast(
           "Local autosave is unavailable in this browser. / 本地自动保存不可用。"
@@ -2967,6 +3554,7 @@ export default function Home() {
       ideaText,
       ideaImage,
       ideaImageName,
+      ideaImages,
       referencePackages,
       viewStyle,
       renderResults,
@@ -3006,6 +3594,7 @@ export default function Home() {
     handbookStylePrompt,
     ideaImage,
     ideaImageName,
+    ideaImages,
     ideas,
     ideaText,
     materialPrices,
@@ -3023,13 +3612,6 @@ export default function Home() {
   const toggleLanguage = () => {
     const nextLanguage: Language = language === "en" ? "zh" : "en";
     setLanguage(nextLanguage);
-    setAgentMessages((current) =>
-      current.length === 1 &&
-      (current[0] === agentGreeting("en") ||
-        current[0] === agentGreeting("zh"))
-        ? [agentGreeting(nextLanguage)]
-        : current
-    );
   };
 
   useEffect(() => {
@@ -3040,6 +3622,12 @@ export default function Home() {
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
+      if (
+        dockAddRef.current &&
+        !dockAddRef.current.contains(event.target as Node)
+      ) {
+        setDockOpen(false);
+      }
       if (
         ideaSelectorRef.current &&
         !ideaSelectorRef.current.contains(event.target as Node)
@@ -3055,6 +3643,10 @@ export default function Home() {
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (dockAddRef.current?.contains(document.activeElement)) {
+          dockAddRef.current.querySelector<HTMLButtonElement>("button")?.focus();
+        }
+        setDockOpen(false);
         setIdeaMenuOpen(false);
         setMaterialUploadMenuOpen(false);
         setAgentOpen(false);
@@ -3070,7 +3662,39 @@ export default function Home() {
 
   const notify = (message: string) => setToast(message);
 
+  const saveApiSettings = (nextConfig: BrowserApiConfig) => {
+    const saved = saveBrowserApiConfig(nextConfig);
+    setApiConfig(saved);
+    notify(
+      tr(
+        language,
+        "Browser API connection saved for this tab",
+        "浏览器 API 连接已为当前标签页保存"
+      )
+    );
+    return saved;
+  };
+
+  const clearApiSettings = () => {
+    clearBrowserApiConfig();
+    setApiConfig({ baseUrl: "", secretKey: "" });
+  };
+
+  const configuredApi = (activeLanguage: Language = language) => {
+    if (isBrowserApiConfigured(apiConfig)) return apiConfig;
+    setApiSettingsOpen(true);
+    notify(
+      tr(
+        activeLanguage,
+        "Enter your Model API URL and secret key first.",
+        "请先填写模型 API URL 和 Secret Key。"
+      )
+    );
+    return null;
+  };
+
   const openStage = (next: Stage) => {
+    setDockOpen(false);
     setIdeaMenuOpen(false);
     setMaterialUploadMenuOpen(false);
     setStage(next);
@@ -3129,41 +3753,66 @@ export default function Home() {
   };
 
   const handleIdeaImage = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setIdeaImage(await readFileAsDataUrl(file));
-    setIdeaImageName(file.name);
+    const files = Array.from(event.target.files ?? []);
     event.target.value = "";
+    if (!files.length || structuringIdea || ideaImagesLoading) return;
+    if (files.length + ideaImages.length > MAX_IDEA_IMAGES) {
+      notify(tr(language, "Attach up to 4 images for this idea.", "每个创意最多可添加 4 张图片。"));
+      return;
+    }
+    setIdeaImagesLoading(true);
+    try {
+      const images = await Promise.all(files.map(async (file) => {
+        if (!file.size || file.size > 8 * 1024 * 1024) throw new Error("invalid_image");
+        return { src: await normalizeReferenceImage(await readFileAsDataUrl(file)), name: file.name };
+      }));
+      setIdeaImages((current) => normalizeIdeaAttachments([...current, ...images]));
+    } catch {
+      notify(tr(language, "Choose readable images up to 8 MB each. Your existing images are kept.", "请选择每张不超过 8 MB 的有效图片，已有图片会保留。"));
+    } finally {
+      setIdeaImagesLoading(false);
+    }
   };
 
-  const addIdea = () => {
-    if (!ideaText.trim()) return;
-    const words = ideaText
-      .trim()
-      .replace(/[^\p{L}\p{N}\s-]/gu, "")
-      .split(/\s+/)
-      .slice(0, 4);
-    const idea: IdeaCard = {
-      id: uid(),
-      title: words.join(" ") || tr(language, "Untitled Dessert", "未命名甜点"),
-      prompt: ideaText.trim(),
-      image: ideaImage,
-      imageName: ideaImageName,
-      tags: ["new", "ready"],
-    };
-    setIdeas((current) => [idea, ...current]);
-    setReferencePackages((current) => ({
-      ...current,
-      [idea.id]: inheritedReferences(idea),
-    }));
-    setProductDrafts((current) => ({
-      ...current,
-      [idea.id]: emptyProductDraft(),
-    }));
-    setIdeaText("");
-    setIdeaImage("");
-    setIdeaImageName("");
-    notify(tr(language, "Idea added to the gallery", "创意已添加到画廊"));
+  const addIdea = async () => {
+    if (ideaSubmitting.current || ideaAudioBusy || ideaImagesLoading || (!ideaText.trim() && !ideaImages.length)) return;
+    if (ideaText.length > MAX_IDEA_TEXT_LENGTH) {
+      notify(tr(language, "Shorten the idea to 16,000 characters before adding it.", "请将创意文字缩短至 16,000 字符以内。"));
+      return;
+    }
+    ideaSubmitting.current = true;
+    setStructuringIdea(true);
+    const imagesSnapshot = [...ideaImages];
+    const languageSnapshot = language;
+    try {
+      const fields = await structureIdea({ text: ideaText.trim(), language: languageSnapshot, images: imagesSnapshot });
+      const idea: IdeaCard = { id: uid(), ...fields };
+      const extraReferences: DesignReference[] = imagesSnapshot
+        .filter((image) => image.src !== idea.image)
+        .map((image) => ({ id: uid(), kind: "image", title: image.name || "Idea reference", content: "", asset: image.src }));
+      setIdeas((current) => [idea, ...current]);
+      setSelectedIdeaId(idea.id);
+      setReferencePackages((current) => ({
+        ...current,
+        [idea.id]: [...inheritedReferences(idea), ...extraReferences],
+      }));
+      setProductDrafts((current) => ({ ...current, [idea.id]: emptyProductDraft() }));
+      setIdeaText("");
+      setIdeaImages([]);
+      notify(tr(languageSnapshot, "Idea polished and added to the gallery", "创意已整理润色并添加到画廊"));
+    } catch (caught) {
+      const code = caught instanceof Error ? caught.message : "idea_failed";
+      notify(code === "not_configured"
+        ? tr(languageSnapshot, "Open Model API settings and enter your API URL and secret key. Your draft is kept.", "请打开模型 API 设置并填写 API URL 和 Secret Key，草稿已保留。")
+        : code === "rate_limit"
+          ? tr(languageSnapshot, "The idea editor is busy. Your draft is kept; try again shortly.", "创意编辑助手正忙，草稿已保留，请稍后重试。")
+          : code === "idea_blocked"
+            ? tr(languageSnapshot, "This idea could not be processed. Revise the text or images and try again.", "暂时无法处理此创意，请调整文字或图片后重试。")
+            : tr(languageSnapshot, "Could not polish this idea. Your text and images are kept; try again.", "创意整理失败，文字与图片已保留，请重试。"));
+    } finally {
+      ideaSubmitting.current = false;
+      setStructuringIdea(false);
+    }
   };
 
   const saveIdea = (updatedIdea: IdeaCard) => {
@@ -3269,6 +3918,8 @@ export default function Home() {
 
   const generateRendering = async () => {
     if (!references.length || renderingDesignId !== null) return;
+    const activeApi = configuredApi();
+    if (!activeApi) return;
     const idea = selectedIdea;
     const ideaId = idea.id;
     const packageSnapshot = [...references];
@@ -3298,10 +3949,9 @@ export default function Home() {
           };
         })
       );
-      const response = await fetch("/api/render", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const payload = await generateProductRendering(
+        activeApi,
+        {
           idea: {
             title: idea.title,
             prompt: idea.prompt,
@@ -3309,18 +3959,8 @@ export default function Home() {
           },
           references: apiReferences,
           view: viewSnapshot,
-        }),
-      });
-      const payload = (await response.json().catch(() => null)) as
-        | {
-            image?: string;
-            inputCount?: number;
-            error?: { code?: string; message?: string };
-          }
-        | null;
-      if (!response.ok || !payload?.image) {
-        throw new Error(payload?.error?.code || "generation_failed");
-      }
+        }
+      );
       const generatedImage = payload.image;
       const influences = Array.from(
         new Set(packageSnapshot.map((reference) => reference.kind))
@@ -3343,9 +3983,15 @@ export default function Home() {
         code === "not_configured"
           ? tr(
               language,
-              "Image generation is not configured.",
-              "图片生成功能尚未配置。"
+              "Open Model API settings and check your URL and secret key.",
+              "请打开模型 API 设置并检查 URL 与 Secret Key。"
             )
+          : code === "connection_failed" || code === "endpoint_not_found"
+            ? tr(
+                language,
+                "The browser could not reach the image API. Check the base URL and CORS settings.",
+                "浏览器无法访问图片 API，请检查基础 URL 和 CORS 设置。"
+              )
           : code === "rate_limit"
             ? tr(
                 language,
@@ -3463,13 +4109,13 @@ export default function Home() {
     ]);
 
   const addImportedMaterials = (rows: MaterialRow[]) => {
-    setActiveMaterials((current) => [...current, ...rows]);
+    setActiveMaterials((current) => consolidateMaterials([...current, ...rows]));
     setMaterialImportKind(null);
     notify(
       tr(
         language,
-        `${rows.length} AI-extracted material rows added`,
-        `已添加 ${rows.length} 行 AI 识别材料`
+        "Materials added; matching materials and compatible units combined",
+        "材料已添加，相同材料的兼容单位用量已合并"
       )
     );
   };
@@ -3492,6 +4138,8 @@ export default function Home() {
       );
       return;
     }
+    const activeApi = configuredApi();
+    if (!activeApi) return;
 
     const ideaSnapshot = selectedIdea;
     const ideaId = ideaSnapshot.id;
@@ -3537,10 +4185,9 @@ export default function Home() {
     setAdvisingDesignId(ideaId);
     setPlanAdviceErrors((current) => ({ ...current, [ideaId]: "" }));
     try {
-      const response = await fetch("/api/plan-advice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const payload = await requestPlanAdvice(
+        activeApi,
+        {
           language: languageSnapshot,
           product: {
             title: ideaSnapshot.title,
@@ -3552,16 +4199,10 @@ export default function Home() {
           variants: variantsSnapshot,
           materials: materialsSnapshot,
           existingSteps: existingStepsSnapshot,
-        }),
-      });
-      const payload = (await response.json().catch(() => null)) as
-        | {
-            steps?: Array<{ title?: string; instruction?: string }>;
-            error?: { code?: string; message?: string };
-          }
-        | null;
+        }
+      );
       const suggestions: PlanStep[] =
-        payload?.steps
+        payload.steps
           ?.filter(
             (step) =>
               typeof step.title === "string" &&
@@ -3575,8 +4216,8 @@ export default function Home() {
             instruction: step.instruction?.trim() ?? "",
             image: "",
           })) ?? [];
-      if (!response.ok || !suggestions.length) {
-        throw new Error(payload?.error?.code || "advice_failed");
+      if (!suggestions.length) {
+        throw new BrowserApiError("empty_advice", 502);
       }
 
       setProductDrafts((current) => {
@@ -3602,9 +4243,15 @@ export default function Home() {
         code === "not_configured"
           ? tr(
               languageSnapshot,
-              "AI making-plan advice is not configured.",
-              "AI 制作方案功能尚未配置。"
+              "Open Model API settings and check your URL and secret key.",
+              "请打开模型 API 设置并检查 URL 与 Secret Key。"
             )
+          : code === "connection_failed" || code === "endpoint_not_found"
+            ? tr(
+                languageSnapshot,
+                "The browser could not reach the Responses API. Check the base URL and CORS settings.",
+                "浏览器无法访问 Responses API，请检查基础 URL 和 CORS 设置。"
+              )
           : code === "rate_limit"
             ? tr(
                 languageSnapshot,
@@ -3723,18 +4370,19 @@ export default function Home() {
         draft.materials.forEach((material) => {
           const name = material.name.trim();
           if (!name) return;
-          const unit = material.unit.trim() || "unit";
-          const key = materialKey(name, unit);
-          const current = consolidated.get(key) ?? {
-            key,
+          const unit = normalizeMaterialUnit(material.unit);
+          const group = materialGroupKey(name, unit) ?? `unknown:${idea.id}:${material.id}`;
+          const current = consolidated.get(group) ?? {
+            key: unit ? materialKey(name, unit) : group,
             name,
             unit,
             amounts: {},
           };
           current.amounts[idea.id] =
             (current.amounts[idea.id] ?? 0) +
-            materialAmount(material.amount) * batchScale;
-          consolidated.set(key, current);
+            (convertMaterialAmount(materialAmount(material.amount) * batchScale, unit, current.unit)
+              ?? materialAmount(material.amount) * batchScale);
+          consolidated.set(group, current);
         });
       });
 
@@ -3743,7 +4391,7 @@ export default function Home() {
           (sum, amount) => sum + amount,
           0
         );
-        const price = materialPrices[row.key] ?? 0;
+        const price = materialPrices[row.key] ?? compatibleMaterialPrice(materialPrices, row.name, row.unit);
         return { ...row, total, price, cost: total * price };
       });
     },
@@ -3878,6 +4526,8 @@ export default function Home() {
       );
       return;
     }
+    const activeApi = configuredApi();
+    if (!activeApi) return;
 
     const languageSnapshot = language;
     const signatureSnapshot = currentHandbookSignature;
@@ -3922,10 +4572,9 @@ export default function Home() {
         })
       );
 
-      const response = await fetch("/api/handbook-render", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const payload = await generateHandbookPages(
+        activeApi,
+        {
           language: languageSnapshot,
           stylePrompt: stylePromptSnapshot,
           pageCount: pageCountSnapshot,
@@ -3942,28 +4591,18 @@ export default function Home() {
               }
             : undefined,
           desserts,
-        }),
-      });
-      const payload = (await response.json().catch(() => null)) as
-        | {
-            images?: unknown;
-            dessertCount?: number;
-            visualInputCount?: number;
-            error?: { code?: string; message?: string };
-          }
-        | null;
-      const pages = Array.isArray(payload?.images)
+        }
+      );
+      const pages = Array.isArray(payload.images)
         ? payload.images.filter(
             (image): image is string =>
               typeof image === "string" &&
-              image.startsWith("data:image/")
+              (image.startsWith("data:image/") ||
+                /^https?:\/\//i.test(image))
           )
         : [];
-      if (
-        !response.ok ||
-        pages.length !== pageCountSnapshot
-      ) {
-        throw new Error(payload?.error?.code || "generation_failed");
+      if (pages.length !== pageCountSnapshot) {
+        throw new BrowserApiError("empty_generation", 502);
       }
       setHandbookResult({
         pages,
@@ -3986,9 +4625,15 @@ export default function Home() {
         code === "not_configured"
           ? tr(
               languageSnapshot,
-              "AI handbook generation is not configured.",
-              "AI 手册生成功能尚未配置。"
+              "Open Model API settings and check your URL and secret key.",
+              "请打开模型 API 设置并检查 URL 与 Secret Key。"
             )
+          : code === "connection_failed" || code === "endpoint_not_found"
+            ? tr(
+                languageSnapshot,
+                "The browser could not reach the image API. Check the base URL and CORS settings.",
+                "浏览器无法访问图片 API，请检查基础 URL 和 CORS 设置。"
+              )
           : code === "rate_limit"
             ? tr(
                 languageSnapshot,
@@ -4113,28 +4758,6 @@ export default function Home() {
     }
   };
 
-  const sendAgentMessage = () => {
-    if (!agentInput.trim() && !agentAudioName) return;
-    const userMessage =
-      agentInput.trim() ||
-      tr(
-        language,
-        `Voice note: ${agentAudioName}`,
-        `语音记录：${agentAudioName}`
-      );
-    setAgentMessages((current) => [
-      ...current,
-      userMessage,
-      tr(
-        language,
-        "Muse suggests testing one small portion first, then recording temperature and texture before scaling.",
-        "缪斯建议先测试一个小份，再记录温度与质地后进行放大。"
-      ),
-    ]);
-    setAgentInput("");
-    setAgentAudioName("");
-  };
-
   return (
     <>
       <a className="skip-link" href="#atelier-workspace">
@@ -4152,18 +4775,43 @@ export default function Home() {
         <span className="fence-line" />
       </div>
       <header className="topbar">
-        <button
-          className="brand"
-          type="button"
-          onClick={() => openStage("idea")}
-          aria-label={tr(language, "Dessert Valley home", "甜点谷首页")}
-        >
-          <span className="brand-mark"><Sprout size={18} /></span>
-          <span>
-            <strong>Dessert Valley</strong>
-            <small>{tr(language, "riverside pastry studio", "河畔甜点工坊")}</small>
-          </span>
-        </button>
+        <div className="brand-actions">
+          <button
+            className="brand"
+            type="button"
+            onClick={() => openStage("idea")}
+            aria-label={tr(language, "Dessert Valley home", "甜点谷首页")}
+          >
+            <span className="brand-mark"><Sprout size={18} /></span>
+            <span>
+              <strong>Dessert Valley</strong>
+              <small>{tr(language, "riverside pastry studio", "河畔甜点工坊")}</small>
+            </span>
+          </button>
+          <button
+            className={cn(
+              "square-button api-settings-button",
+              apiConfigured && "configured"
+            )}
+            type="button"
+            onClick={() => setApiSettingsOpen(true)}
+            aria-label={tr(
+              language,
+              apiConfigured
+                ? "Model API connected. Open settings"
+                : "Model API not configured. Open settings",
+              apiConfigured
+                ? "模型 API 已连接，打开设置"
+                : "模型 API 尚未配置，打开设置"
+            )}
+            data-tip={tr(language, "Model API settings", "模型 API 设置")}
+            aria-haspopup="dialog"
+            aria-expanded={apiSettingsOpen}
+          >
+            <KeyRound size={16} />
+            <span className="api-status-dot" aria-hidden="true" />
+          </button>
+        </div>
         <nav
           className="stage-nav"
           aria-label={tr(language, "Dessert workflow", "甜点工作流程")}
@@ -4188,7 +4836,18 @@ export default function Home() {
         </nav>
         <div className="top-actions">
           <button
-            className="square-button"
+            className="square-button gallery-trigger"
+            type="button"
+            onClick={() => setGalleryOpen(true)}
+            aria-label={tr(language, "Open masterpiece gallery", "打开作品画廊")}
+            data-tip={tr(language, "Masterpiece gallery", "作品画廊")}
+            aria-haspopup="dialog"
+            aria-expanded={galleryOpen}
+          >
+            <Images size={16} />
+          </button>
+          <button
+            className="square-button cards-import-button"
             type="button"
             onClick={() => importRef.current?.click()}
             aria-label={tr(language, "Import cards", "导入卡片")}
@@ -4238,10 +4897,12 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="idea-composer pixel-panel">
+            <div className="idea-composer pixel-panel" aria-busy={structuringIdea}>
               <textarea
                 value={ideaText}
                 onChange={(event) => setIdeaText(event.target.value)}
+                disabled={!workspaceHydrated || structuringIdea}
+                maxLength={MAX_IDEA_TEXT_LENGTH}
                 placeholder={tr(
                   language,
                   "A tiny chestnut tart with maple cream and a little acorn lid…",
@@ -4249,29 +4910,35 @@ export default function Home() {
                 )}
                 aria-label={tr(language, "Dessert idea", "甜点创意")}
               />
+              {ideaImages.length > 0 && <div className="idea-image-attachments" aria-label={tr(language, "Attached idea images", "创意附图")}>
+                {ideaImages.map((image, index) => <div className="idea-image-attachment" key={image.src}>
+                  <WorkspaceImage src={image.src} alt={image.name || tr(language, "Idea reference", "创意参考")} />
+                  <span>{image.name}</span>
+                  <button className="square-button" type="button" disabled={!workspaceHydrated || structuringIdea || ideaImagesLoading}
+                    onClick={() => setIdeaImages((current) => current.filter((_image, position) => position !== index))}
+                    aria-label={tr(language, `Remove image ${index + 1}`, `移除第 ${index + 1} 张图片`)}><X size={16} /></button>
+                </div>)}
+              </div>}
               <div className="composer-footer">
                 <div className="composer-assets">
-                  <label className={cn("tool-chip", ideaImage && "active")}>
-                    <ImagePlus size={15} />
-                    {ideaImageName || tr(language, "Add image", "添加图片")}
-                    <input type="file" accept="image/*" onChange={handleIdeaImage} />
-                  </label>
-                  {ideaImage && (
-                    <button
-                      className="square-button mini"
-                      type="button"
-                      onClick={() => {
-                        setIdeaImage("");
-                        setIdeaImageName("");
-                      }}
-                      aria-label={tr(language, "Remove idea image", "移除创意图片")}
-                    >
-                      <X size={13} />
-                    </button>
-                  )}
+                  <button className="tool-chip" type="button" onClick={() => ideaImageInput.current?.click()}
+                    disabled={!workspaceHydrated || structuringIdea || ideaImagesLoading || ideaImages.length >= MAX_IDEA_IMAGES}>
+                    {ideaImagesLoading ? <LoaderCircle className="spin" size={15} /> : <ImagePlus size={15} />}
+                    {tr(language, "Add image", "添加图片")}
+                  </button>
+                  <input ref={ideaImageInput} type="file" accept="image/*" multiple hidden onChange={handleIdeaImage}
+                    disabled={!workspaceHydrated || structuringIdea || ideaImagesLoading || ideaImages.length >= MAX_IDEA_IMAGES} />
+                  <IdeaAudioInput language={language} disabled={!workspaceHydrated || structuringIdea || ideaImagesLoading}
+                    onBusyChange={setIdeaAudioBusy}
+                    onError={notify}
+                    onTranscript={(text) => {
+                      setIdeaText((current) => current.trimEnd() ? `${current.trimEnd()}\n${text}` : text);
+                    }} />
                 </div>
-                <button className="button primary" type="button" onClick={addIdea} disabled={!ideaText.trim()}>
-                  <Plus size={15} /> {tr(language, "Add to gallery", "添加到画廊")}
+                <button className={cn("button primary", structuringIdea && "thinking")} type="button" onClick={addIdea}
+                  disabled={!workspaceHydrated || structuringIdea || ideaAudioBusy || ideaImagesLoading || (!ideaText.trim() && !ideaImages.length)}>
+                  {structuringIdea ? <LoaderCircle className="spin" size={15} /> : <Plus size={15} />}
+                  <span aria-live="polite" aria-atomic="true">{structuringIdea ? tr(language, "Muse Thinking", "缪斯思考中") : tr(language, "Add to gallery", "添加到画廊")}</span>
                 </button>
               </div>
             </div>
@@ -4455,19 +5122,20 @@ export default function Home() {
                       </small>
                     </span>
                   </div>
-                  <div className="dock-add-wrap">
+                  <div className="dock-add-wrap" ref={dockAddRef}>
                     <button
                       className="add-reference-button"
                       type="button"
                       onClick={() => setDockOpen((current) => !current)}
                       aria-expanded={dockOpen}
+                      aria-haspopup="menu"
                     >
                       <Plus size={18} /> {tr(language, "Add", "添加")}
                       <ChevronDown size={14} />
                     </button>
                     {dockOpen && (
                       <div className="dock-menu" role="menu">
-                        {(Object.keys(referenceMeta) as ReferenceKind[]).map((kind) => {
+                        {addableReferenceKinds.map((kind) => {
                           const meta = referenceMeta[kind];
                           const metaCopy = referenceCopy[language][kind];
                           const Icon = meta.icon;
@@ -5128,10 +5796,11 @@ export default function Home() {
                             />
                           </td>
                           <td>
-                            <input
+                            <MaterialUnitInput
                               value={row.unit}
-                              onChange={(event) => updateMaterial(row.id, { unit: event.target.value })}
-                              placeholder="g"
+                              onChange={(unit) => updateMaterial(row.id, { unit })}
+                              language={language}
+                              label={tr(language, `${row.name || "Material"} unit`, `${row.name || "材料"}单位`)}
                             />
                           </td>
                           {sizeVariants.map((sizeVariant) => {
@@ -6251,67 +6920,45 @@ export default function Home() {
         {agentOpen ? <X size={20} /> : <Bot size={21} />}
         {!agentOpen && <span>{tr(language, "Ask Muse", "问问缪斯")}</span>}
       </button>
-      {agentOpen && (
-        <aside
-          id="pastry-agent-window"
-          className="agent-window"
-          role="dialog"
-          aria-label={tr(language, "Pastry agent", "甜点助手")}
-        >
-          <header>
-            <span className="panel-icon muse"><Bot size={17} /></span>
-            <span>
-              <strong>{tr(language, "Pastry agent", "甜点助手")}</strong>
-              <small>{tr(language, "floating helper", "浮动助手")}</small>
-            </span>
-            <button
-              className="square-button mini"
-              type="button"
-              onClick={() => setAgentOpen(false)}
-              aria-label={tr(language, "Close chat", "关闭对话")}
-            >
-              <X size={13} />
-            </button>
-          </header>
-          <div className="agent-messages">
-            {agentMessages.map((message, index) => (
-              <p className={cn(index % 2 === 1 && "user")} key={`${message}-${index}`}>{message}</p>
-            ))}
-          </div>
-          {agentAudioName && <div className="audio-attached"><AudioLines size={13} /> {agentAudioName}</div>}
-          <div className="agent-composer">
-            <label
-              className="square-button"
-              data-tip={tr(language, "Attach audio", "添加语音")}
-            >
-              <Mic size={15} />
-              <input
-                type="file"
-                accept="audio/*"
-                onChange={(event) => {
-                  setAgentAudioName(event.target.files?.[0]?.name ?? "");
-                  event.target.value = "";
-                }}
-              />
-            </label>
-            <input
-              value={agentInput}
-              onChange={(event) => setAgentInput(event.target.value)}
-              onKeyDown={(event) => event.key === "Enter" && sendAgentMessage()}
-              placeholder={tr(language, "Ask about this dessert…", "询问这个甜点…")}
-            />
-            <button
-              className="square-button send"
-              type="button"
-              onClick={sendAgentMessage}
-              aria-label={tr(language, "Send", "发送")}
-            >
-              <Send size={15} />
-            </button>
-          </div>
-        </aside>
-      )}
+      <MuseAdviser
+        open={agentOpen}
+        language={language}
+        context={normalizeMuseContext({
+          stage,
+          ideaDraft: stage === "idea" ? ideaText : "",
+          dessert: { title: selectedIdea.title, description: selectedIdea.prompt, tags: selectedIdea.tags, hasImage: Boolean(selectedIdea.image) },
+          references: references.map(({ kind, title, content }) => ({ kind, title, content })),
+          rendering: { available: Boolean(renderResult), stale: renderingIsStale, view: renderResult?.view },
+          materials,
+          variants: sizeVariants.map((item, index) => ({ ...item, scale: variantScales[index].scale })),
+          steps: planSteps,
+          batches: stage === "bake" ? productionRows.map((batch) => ({
+            dessert: ideas.find((idea) => idea.id === batch.ideaId)?.title,
+            variant: productionVariantsByIdea[batch.ideaId]?.find((item) => item.id === batch.variantId)?.name,
+            count: batch.count,
+          })) : [],
+          materialTotals: stage === "bake" ? consolidateRows.map((row) => ({ name: row.name, amount: row.total, unit: row.unit })) : [],
+          bakeMode: stage === "bake" ? bakeMode : null,
+          handbook: stage === "bake" ? {
+            desserts: selectedHandbookIdeas.map((idea) => idea.title), style: handbookStylePrompt,
+            pageCount: handbookPageCount, generated: Boolean(handbookResult), stale: handbookIsStale,
+          } : null,
+        })}
+        onClose={() => setAgentOpen(false)}
+        onNavigate={openStage}
+      />
 
+      {galleryOpen && <MasterpieceGallery language={language} onClose={closeGallery} />}
+
+      {apiSettingsOpen && (
+        <ApiSettingsDialog
+          initialConfig={apiConfig}
+          language={language}
+          onClose={() => setApiSettingsOpen(false)}
+          onSave={saveApiSettings}
+          onClear={clearApiSettings}
+        />
+      )}
       {ideaEditor && (
         <IdeaEditor
           key={ideaEditor.id}
@@ -6336,6 +6983,7 @@ export default function Home() {
           kind={referenceEditor.kind}
           existing={referenceEditor.existing}
           language={language}
+          apiConfig={apiConfig}
           onClose={() => setReferenceEditor(null)}
           onSave={saveReference}
         />
@@ -6345,7 +6993,9 @@ export default function Home() {
           key={`${selectedIdea.id}-${materialImportKind}`}
           kind={materialImportKind}
           idea={selectedIdea}
+          existingMaterialNames={materials.map((row) => row.name).filter((name) => name.trim())}
           language={language}
+          apiConfig={apiConfig}
           onClose={() => setMaterialImportKind(null)}
           onApply={addImportedMaterials}
         />

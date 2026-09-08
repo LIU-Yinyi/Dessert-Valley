@@ -4,7 +4,6 @@ const STORE_NAME = "workspace";
 const ACTIVE_WORKSPACE_KEY = "active";
 const FALLBACK_STORAGE_KEY = "dessert-valley-workspace-fallback";
 
-export const WORKSPACE_COOKIE_NAME = "dessert-valley-workspace";
 export const WORKSPACE_STORAGE_VERSION = 3;
 
 export type WorkspaceEnvelope<T> = {
@@ -91,33 +90,6 @@ function writeFallback<T>(envelope: WorkspaceEnvelope<T>) {
   window.localStorage.setItem(FALLBACK_STORAGE_KEY, JSON.stringify(envelope));
 }
 
-export function hasWorkspaceCookie() {
-  if (typeof document === "undefined") return false;
-  try {
-    return document.cookie
-      .split(";")
-      .some(
-        (part) =>
-          part.trim().split("=")[0] === WORKSPACE_COOKIE_NAME
-      );
-  } catch {
-    return false;
-  }
-}
-
-export function ensureWorkspaceCookie() {
-  if (typeof document === "undefined") return;
-  const secure =
-    typeof window !== "undefined" && window.location.protocol === "https:"
-      ? "; Secure"
-      : "";
-  try {
-    document.cookie = `${WORKSPACE_COOKIE_NAME}=v${WORKSPACE_STORAGE_VERSION}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`;
-  } catch {
-    // IndexedDB can still preserve the workspace when cookies are disabled.
-  }
-}
-
 export async function readWorkspace<T>() {
   try {
     const stored = await readFromIndexedDb<T>();
@@ -133,8 +105,6 @@ export async function writeWorkspace<T>(data: T) {
     savedAt: new Date().toISOString(),
     data,
   };
-
-  ensureWorkspaceCookie();
 
   try {
     await writeToIndexedDb(envelope);

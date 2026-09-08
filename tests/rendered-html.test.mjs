@@ -1,73 +1,90 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
+test("builds a self-contained static application shell", async () => {
+  const html = await readFile(
+    new URL("../dist/index.html", import.meta.url),
+    "utf8",
   );
-}
+  const assets = await readdir(new URL("../dist/assets", import.meta.url));
 
-test("server renders the Dessert Valley product shell", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
   assert.match(html, /<title>Dessert Valley — Cozy Dessert Atelier<\/title>/i);
-  assert.match(html, /Dream a dessert worth making\./);
-  assert.match(html, /Idea gallery/);
-  assert.match(html, /Moonlit Jasmine Cloud/);
-  assert.match(html, /Skip to atelier workspace/);
-  assert.match(html, /Dessert Valley Riverside Atelier/);
-  assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
+  assert.match(html, /<div id="root"><\/div>/);
+  assert.match(html, /\.\/assets\/[^"]+\.js/);
+  assert.match(html, /\.\/assets\/[^"]+\.css/);
+  assert.ok(assets.some((asset) => asset.endsWith(".js")));
+  assert.ok(assets.some((asset) => asset.endsWith(".css")));
+  assert.doesNotMatch(html, /_vinext|_next|cloudflare|codex-preview/i);
 });
 
-test("keeps the simplified multimodal workflow and responsive contracts", async () => {
+test("keeps the browser-only workflow, responsive UI, and storage contracts", async () => {
   const [
     page,
+    browserAi,
     css,
-    layout,
+    main,
+    html,
     packageJson,
-    renderRoute,
-    planAdviceRoute,
-    materialImportRoute,
-    handbookRoute,
+    viteConfig,
+    readme,
     workspaceStorage,
     handbookStorage,
+    museAdviser,
   ] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/browser-ai.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
-    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/main.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../index.html", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/render/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/plan-advice/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/material-import/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/handbook-render/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../vite.config.ts", import.meta.url), "utf8"),
+    readFile(new URL("../README.md", import.meta.url), "utf8"),
     readFile(new URL("../app/workspace-storage.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/handbook-storage.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/muse-adviser.tsx", import.meta.url), "utf8"),
   ]);
 
-  assert.match(page, /type ReferenceKind = "text" \| "audio" \| "image" \| "canvas"/);
+  assert.match(main, /createRoot\(root\)\.render/);
+  assert.match(main, /<StrictMode>/);
+  assert.match(html, /<script type="module" src="\/app\/main\.tsx"><\/script>/);
+
+  assert.match(
+    page,
+    /type ReferenceKind = "text" \| "audio" \| "image" \| "canvas"/,
+  );
+  assert.match(
+    page,
+    /const addableReferenceKinds = \[\s*"text",\s*"image",\s*"canvas",\s*\]/,
+  );
+  assert.match(page, /addableReferenceKinds\.map\(\(kind\) =>/);
+  assert.doesNotMatch(
+    page,
+    /Object\.keys\(referenceMeta\) as ReferenceKind\[\]/,
+  );
   assert.match(page, /inheritedReferences\(idea\)/);
-  assert.match(page, /fetch\("\/api\/render"/);
-  assert.match(page, /normalizeReferenceImage/);
-  assert.doesNotMatch(page, /composeIntentRendering|simulated-cutaway/);
+  assert.match(page, /generateProductRendering\(/);
+  assert.match(page, /requestPlanAdvice\(/);
+  assert.match(page, /importMaterials\(/);
+  assert.match(page, /generateHandbookPages\(/);
+  assert.doesNotMatch(
+    page,
+    /fetch\(["']\/api\/|next\/image|NEXT_PUBLIC_OPENAI|OPENAI_API_KEY/,
+  );
+  assert.match(page, /function ApiSettingsDialog/);
+  assert.match(page, /Model API settings/);
+  assert.match(page, /模型 API 设置/);
+  assert.match(page, /API base URL/);
+  assert.match(page, /Secret key/);
+  assert.match(page, /session storage/);
+  assert.match(page, /CORS/);
+  assert.match(page, /api-settings-button/);
+  assert.match(page, /apiConfigured && "configured"/);
+  const workspaceType = page.match(
+    /type WorkspaceData = \{[\s\S]*?\n\};/,
+  )?.[0] ?? "";
+  assert.doesNotMatch(workspaceType, /secretKey|baseUrl|apiConfig/);
+
   assert.match(page, /intentSignature/);
   assert.match(page, /designIntentSignature/);
   assert.match(page, /referencePackages/);
@@ -82,102 +99,62 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /addEventListener\("pagehide", persistSnapshot\)/);
   assert.match(page, /const saveActiveRendering = \(continueToProduct: boolean\)/);
   assert.match(page, /image: renderResult\.src/);
-  assert.match(
-    page,
-    /renderResult\?\.src\s*\|\|\s*selectedIdea\.image\s*\|\|\s*currentProduct\.image/s,
-  );
-  assert.match(page, /onClick=\{\(\) => saveActiveRendering\(false\)\}/);
-  assert.match(page, /onClick=\{\(\) => saveActiveRendering\(true\)\}/);
   assert.match(page, /"Save & build recipe"/);
-  assert.doesNotMatch(page, /"Continue to Product"/);
-  assert.match(page, /productDrafts/);
-  assert.match(page, /fetch\("\/api\/plan-advice"/);
   assert.match(page, /material-aware steps/);
-  assert.match(page, /planAdviceErrors/);
-  assert.match(page, /fetch\("\/api\/material-import"/);
   assert.match(page, /function MaterialImportDialog/);
   assert.match(page, /navigator\.mediaDevices\.getUserMedia/);
   assert.match(page, /new MediaRecorder/);
-  assert.match(page, /"Record audio", "录制音频"/);
-  assert.match(page, /"Stop recording", "停止录音"/);
-  assert.match(page, /className="material-upload-menu"/);
-  assert.match(page, /"Text", "文字"/);
-  assert.match(page, /"Audio", "音频"/);
-  assert.match(page, /"Image", "图片"/);
+  assert.match(page, /transcribeAudioToText\(/);
+  assert.match(page, /Audio to Text/);
+  assert.match(page, /语音转文字/);
+  assert.match(page, /Stop & transcribe/);
   assert.match(page, /Only rows you confirm are saved/);
-  assert.match(page, /setActiveMaterials\(\(current\) => \[\.\.\.current, \.\.\.rows\]\)/);
-  assert.match(page, /fetch\("\/api\/handbook-render"/);
-  assert.match(page, /handbookStylePrompt/);
-  assert.match(page, /handbookReferenceImage/);
-  assert.match(page, /handbookPageCount/);
-  assert.match(page, /selectedHandbookIdeas/);
   assert.match(page, /Generate AI handbook/);
-  assert.match(page, /localizedIdeaName\(idea, language\)/);
   assert.match(page, /className="handbook-sheet"/);
   assert.match(page, /className="handbook-page-image"/);
   assert.match(page, /turnHandbookPage\("next"\)/);
   assert.match(page, /turnHandbookPage\("previous"\)/);
-  assert.match(page, /Selected dessert cards are attached to every page prompt/);
   assert.match(page, /exportHandbookImages/);
   assert.match(page, /className="handbook-print-pages"/);
-  assert.doesNotMatch(page, /handbook-sheet-content|handbook-preview-list/);
-  assert.doesNotMatch(page, /selectedHandbookRows|selectedMenuRows/);
-  assert.doesNotMatch(page, /Every style batch is its own configurable card/);
-  assert.doesNotMatch(page, /style cards selected/);
-  assert.doesNotMatch(page, /Muse added a three-step starting plan/);
-  assert.doesNotMatch(page, /title: tr\(language, "Prepare the base"/);
-  assert.match(page, /Add variants/);
-  assert.match(page, /sizeVariantScale/);
   assert.match(page, /className="language-button"/);
   assert.match(page, /切换到英文/);
-  assert.doesNotMatch(page, /className="avatar"/);
-  assert.match(page, /Empty dessert sketch canvas/);
-  assert.match(page, /className="agent-window"/);
+  assert.match(page, /<MuseAdviser/);
+  assert.match(museAdviser, /className="agent-window"/);
   assert.match(page, /data-global-assistant="true"/);
-  assert.match(page, /aria-controls="pastry-agent-window"/);
-  assert.doesNotMatch(
-    page,
-    /stage === "product" && \(\s*<>\s*<button\s+className=\{cn\("agent-fab"/s
-  );
-  assert.match(page, /className="alias-tip"/);
-  assert.match(page, /className="active-design-switcher pixel-panel"/);
-  assert.match(page, /className="selected-idea-wrap"/);
-  assert.match(page, /aria-haspopup="listbox"/);
-  assert.match(page, /selectDesignIdea\(idea\)/);
-  assert.match(page, /function IdeaEditor/);
-  assert.match(page, /function IdeaDeleteDialog/);
-  assert.match(page, /function PixelSelect/);
-  assert.match(page, /parseIdeaTags/);
-  assert.match(page, /setIdeaEditor\(idea\)/);
-  assert.match(page, /requestRemoveIdea\(idea\)/);
-  assert.match(page, /className="production-column-headings"/);
-  assert.match(page, /className="production-field spec-field"/);
-  assert.match(page, /productionVariantsByIdea/);
-  assert.match(page, /type ProductionRow = \{\s*id: number;\s*ideaId: number;/s);
-  assert.match(page, /addProductionBatchForIdea\(selectedIdea\.id, true\)/);
-  assert.match(page, /"Save & add production batch"/);
-  assert.match(page, /const consolidated = new Map/);
-  assert.match(page, /draft\.materials\.forEach/);
-  assert.match(page, /materialAmount\(material\.amount\) \* batchScale/);
-  assert.match(page, /materialPrices\[row\.key\]/);
-  assert.match(page, /productionIdeas\.map/);
-  assert.match(page, /migrateWorkspaceData/);
-  assert.doesNotMatch(page, /const productionMaterials|seedPrices/);
-  assert.match(page, /tr\(language,\s*"Default",\s*"默认"\)/s);
-  assert.doesNotMatch(
-    page,
-    /className="production-field style-field"|className="production-field production-size"/,
-  );
-  assert.match(page, /className="world-scenery"/);
-  assert.match(page, /aria-current=\{item\.id === stage \? "step" : undefined\}/);
   assert.match(page, /function useDialogFocus/);
-  assert.ok(
-    page.indexOf('"For chefs"') <
-      page.indexOf('"For diners"'),
+  assert.match(page, /aria-current=\{item\.id === stage \? "step" : undefined\}/);
+
+  assert.match(
+    browserAi,
+    /window\.sessionStorage\.setItem\(\s*API_SECRET_SESSION_KEY/,
   );
+  assert.match(
+    browserAi,
+    /window\.localStorage\.setItem\(API_BASE_STORAGE_KEY/,
+  );
+  assert.match(browserAi, /Authorization: `Bearer \$\{config\.secretKey\.trim\(\)\}`/);
+  assert.match(browserAi, /response = await fetch\(endpoint/);
+  assert.match(browserAi, /"images\/generations"/);
+  assert.match(browserAi, /"images\/edits"/);
+  assert.match(browserAi, /"responses"/);
+  assert.match(browserAi, /"audio\/transcriptions"/);
+  assert.match(browserAi, /gpt-image-2/);
+  assert.match(browserAi, /gpt-5\.6-luna/);
+  assert.match(browserAi, /gpt-4o-mini-transcribe/);
+  assert.match(browserAi, /type: "json_schema"/);
+  assert.match(browserAi, /strict: true/);
+  assert.match(browserAi, /store: false/);
+  assert.match(browserAi, /buildRenderingPrompt/);
+  assert.match(browserAi, /DESIGN DOCK REFERENCES/);
+  assert.match(browserAi, /buildAdviceInstructions/);
+  assert.match(browserAi, /Existing user-authored steps are present/);
+  assert.match(browserAi, /buildHandbookPrompt/);
+  assert.match(browserAi, /final, presentation-ready handbook page image/);
+  assert.match(browserAi, /COMPLETE SELECTED DESSERT CARD SOURCE/);
+  assert.match(browserAi, /1024x1536/);
   assert.doesNotMatch(
-    page,
-    /theme-select|Idea inbox|Estimated number|Include 6% handling loss|sizeEnabled|includeLoss/i,
+    browserAi,
+    /process\.env|cloudflare:workers|OPENAI_API_KEY|fetch\(["']\/api\//,
   );
 
   assert.match(css, /@media \(max-width: 1120px\)/);
@@ -185,143 +162,65 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /@media \(max-width: 620px\)/);
   assert.match(
     css,
-    /grid-template-columns: minmax\(200px, 1fr\) minmax\(460px, 600px\) minmax\(200px, 1fr\)/,
+    /grid-template-columns: minmax\(200px, 1fr\) minmax\(460px, 600px\) minmax\(220px, 1fr\)/,
   );
   assert.match(css, /--soil-deep: #4a2f24/i);
+  assert.match(css, /\.api-settings-modal/);
+  assert.match(css, /\.api-settings-button\.configured \.api-status-dot/);
+  assert.match(css, /\.api-secret-field/);
+  assert.match(css, /\.api-compatibility-note/);
+  assert.match(css, /\.api-settings-footer/);
+  assert.match(css, /\.cards-import-button/);
   assert.match(css, /\.atelier-footer/);
   assert.match(css, /\.pixel-tool-cursor/);
   assert.match(css, /\.cost-table-scroll/);
-  assert.match(css, /\.production-column-headings/);
-  assert.match(css, /\.active-design-list/);
-  assert.match(css, /\.selected-idea-menu/);
-  assert.match(css, /\.selected-idea-option/);
   assert.match(css, /\.render-error/);
-  assert.match(css, /\.muse-save-actions/);
-  assert.match(
-    css,
-    /\.muse-result\s*\{[^}]*width:\s*100%;[^}]*aspect-ratio:\s*4 \/ 3;/s,
-  );
   assert.match(css, /\.plan-advice-status/);
-  assert.match(css, /\.plan-advice-error/);
-  assert.match(css, /\.material-upload-menu/);
-  assert.doesNotMatch(
-    css,
-    /\.dock-menu,\s*\.material-upload-menu\s*\{\s*position:\s*fixed;/,
-  );
-  assert.match(
-    css,
-    /\.material-upload-menu\s*\{[^}]*left: 50%;[^}]*transform: translateX\(-50%\);/s,
-  );
-  assert.match(
-    css,
-    /@media \(max-width: 620px\)[\s\S]*?\.material-upload-menu\s*\{\s*position: absolute;\s*top: calc\(100% \+ 6px\);\s*right: auto;\s*bottom: auto;\s*left: 0;\s*width: min\(330px, calc\(100vw - 42px\)\);\s*transform: none;/,
-  );
   assert.match(css, /\.material-import-modal/);
-  assert.match(css, /\.material-file-actions/);
-  assert.match(css, /\.material-recording-icon/);
-  assert.match(css, /@keyframes material-recording-pulse/);
-  assert.match(css, /\.material-import-review/);
-  assert.match(css, /\.material-review-row/);
+  assert.match(css, /\.audio-to-text-button/);
   assert.match(css, /\.handbook-generator/);
-  assert.match(css, /\.handbook-sheet/);
-  assert.match(css, /\.handbook-page-image/);
   assert.match(css, /\.handbook-pagination/);
   assert.match(css, /@keyframes handbook-page-turn-next/);
   assert.match(css, /@keyframes handbook-page-turn-previous/);
   assert.match(css, /\.handbook-print-pages/);
-  assert.doesNotMatch(css, /\.handbook-sheet-content|\.handbook-preview-list/);
-  assert.match(css, /\.handbook-candidate-description/);
-  assert.match(
-    css,
-    /\.export-panel,\s*\.handbook-gallery\s*\{\s*padding: 22px;/,
-  );
-  assert.match(
-    css,
-    /\.handbook-card-grid\s*\{[^}]*align-items: stretch;/s,
-  );
-  assert.match(
-    css,
-    /@media \(max-width: 1120px\)[\s\S]*?\.diner-layout\s*\{\s*grid-template-columns: 1fr;/,
-  );
-  assert.match(
-    css,
-    /@media \(max-width: 620px\)[\s\S]*?\.export-panel,\s*\.handbook-gallery\s*\{\s*padding: 15px;/,
-  );
-  assert.match(css, /\.handbook-reference-upload/);
-  assert.match(css, /\.idea-card-actions/);
-  assert.match(css, /\.idea-tag-preview/);
-  assert.match(css, /\.button\.danger/);
-  assert.match(css, /\.variant-grid/);
-  assert.match(css, /\.pixel-select-menu/);
-  assert.match(css, /\.production-default-spec/);
-  assert.match(css, /\.production-empty/);
-  assert.match(css, /\.production-source/);
-  assert.match(css, /\.cost-empty/);
-  assert.match(css, /\.language-button/);
-  assert.doesNotMatch(css, /\.avatar/);
-  assert.match(css, /\.alias-tip:hover::after/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 
-  assert.match(layout, /Dessert Valley — Cozy Dessert Atelier/);
-  assert.doesNotMatch(layout, /Crumbloom/i);
-  assert.match(packageJson, /"name": "dessert-valley"/);
-  assert.doesNotMatch(layout, /codex-preview|_sites-preview/i);
-  assert.doesNotMatch(packageJson, /react-loading-skeleton/);
-
-  assert.match(renderRoute, /gpt-image-2/);
-  assert.match(renderRoute, /OPENAI_API_KEY/);
-  assert.match(renderRoute, /\/v1\/images\/edits/);
-  assert.match(renderRoute, /form\.append\(\s*"image\[\]"/);
-  assert.match(renderRoute, /buildRenderingPrompt/);
-  assert.match(renderRoute, /DESIGN DOCK REFERENCES/);
-  assert.match(renderRoute, /Input image \$\{index \+ 1\}/);
-  assert.doesNotMatch(renderRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
-
-  assert.match(planAdviceRoute, /https:\/\/api\.openai\.com\/v1\/responses/);
-  assert.match(materialImportRoute, /https:\/\/api\.openai\.com\/v1\/responses/);
-  assert.match(
-    materialImportRoute,
-    /https:\/\/api\.openai\.com\/v1\/audio\/transcriptions/,
-  );
-  assert.match(materialImportRoute, /gpt-4o-mini-transcribe/);
-  assert.match(materialImportRoute, /gpt-5\.6-luna/);
-  assert.match(materialImportRoute, /type: "input_image"/);
-  assert.match(materialImportRoute, /strict: true/);
-  assert.match(materialImportRoute, /store: false/);
-  assert.match(materialImportRoute, /OPENAI_API_KEY/);
+  assert.match(packageJson, /"dev": "vite"/);
+  assert.match(packageJson, /"build": "tsc --noEmit && vite build"/);
+  assert.match(packageJson, /"start": "vite preview --host 0\.0\.0\.0"/);
   assert.doesNotMatch(
-    materialImportRoute,
-    /NEXT_PUBLIC_OPENAI|dangerouslyAllow/,
+    packageJson,
+    /"next"|"vinext"|"wrangler"|"@cloudflare\/vite-plugin"|"drizzle-orm"/,
   );
-  assert.match(planAdviceRoute, /gpt-5\.6-luna/);
-  assert.match(planAdviceRoute, /OPENAI_API_KEY/);
-  assert.match(planAdviceRoute, /type: "json_schema"/);
-  assert.match(planAdviceRoute, /strict: true/);
-  assert.match(planAdviceRoute, /buildAdviceInstructions/);
-  assert.match(planAdviceRoute, /material-usage table/);
-  assert.match(planAdviceRoute, /Existing user-authored steps are present/);
-  assert.doesNotMatch(planAdviceRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
-
-  assert.match(handbookRoute, /gpt-image-2/);
-  assert.match(handbookRoute, /OPENAI_API_KEY/);
-  assert.match(handbookRoute, /\/v1\/images\/edits/);
-  assert.match(handbookRoute, /form\.append\(\s*"image\[\]"/);
-  assert.match(handbookRoute, /buildHandbookPrompt/);
-  assert.match(handbookRoute, /final, presentation-ready handbook page image/);
-  assert.match(handbookRoute, /COMPLETE SELECTED DESSERT CARD SOURCE/);
-  assert.match(handbookRoute, /pageCount/);
-  assert.match(handbookRoute, /images: pages\.map/);
-  assert.doesNotMatch(handbookRoute, /Do not render any words, letters, numbers/);
-  assert.match(handbookRoute, /1024x1536/);
-  assert.doesNotMatch(handbookRoute, /NEXT_PUBLIC_OPENAI|dangerouslyAllow/);
+  assert.match(viteConfig, /import react from "@vitejs\/plugin-react"/);
+  assert.match(viteConfig, /base: "\.\/"/);
+  assert.match(viteConfig, /plugins: \[react\(\)\]/);
+  assert.doesNotMatch(viteConfig, /cloudflare|hostingConfig|sites\(\)|vinext/);
+  assert.match(readme, /self-host/i);
+  assert.match(readme, /CORS/);
+  assert.match(readme, /sessionStorage/);
 
   assert.match(workspaceStorage, /window\.indexedDB/);
-  assert.match(workspaceStorage, /document\.cookie/);
   assert.match(workspaceStorage, /dessert-valley-workspace/);
   assert.match(workspaceStorage, /WORKSPACE_STORAGE_VERSION = 3/);
-  assert.match(workspaceStorage, /Max-Age=31536000/);
-  assert.match(workspaceStorage, /SameSite=Lax/);
   assert.match(workspaceStorage, /localStorage\.setItem\(FALLBACK_STORAGE_KEY/);
+  assert.doesNotMatch(
+    workspaceStorage,
+    /secretKey|API_SECRET|document\.cookie|WORKSPACE_COOKIE/,
+  );
   assert.match(handbookStorage, /pages: string\[\]/);
-  assert.match(handbookStorage, /typeof value\.src === "string"/);
   assert.match(handbookStorage, /MAX_HANDBOOK_PAGE_COUNT = 4/);
+
+  await assert.rejects(
+    access(new URL("../app/api/render/route.ts", import.meta.url)),
+    /ENOENT/,
+  );
+  await assert.rejects(
+    access(new URL("../.openai/hosting.json", import.meta.url)),
+    /ENOENT/,
+  );
+  await assert.rejects(
+    access(new URL("../worker/index.ts", import.meta.url)),
+    /ENOENT/,
+  );
 });

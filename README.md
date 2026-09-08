@@ -1,23 +1,58 @@
 # Dessert Valley
 
-Dessert Valley is a responsive dessert-planning workspace for moving from a loose
-idea to a visual design, flexible recipe, production plan, and diner handbook.
+Dessert Valley is a responsive, browser-only dessert-planning workspace for
+moving from a loose idea to a visual design, flexible recipe, production plan,
+and diner handbook.
 It uses an original **riverside orchard atelier** identity: timber signboards,
 parchment work surfaces, crisp countryside scenery, and practical modern forms.
 
 ## Product flow
 
-1. **Idea** — capture a short dessert direction and optional reference image.
-2. **Design** — combine text, audio, image, and empty-canvas references into one
-   intent package, then generate exterior or cutaway product renderings.
+1. **Idea** — type a dessert direction or transcribe a voice recording into
+   editable text, and attach up to four reference images. Add to gallery uses AI
+   to polish the dessert name, description and tags and select an attached cover
+   image. Other attached images remain available in the Design Dock.
+2. **Design** — combine text, image, and empty-canvas references into one intent
+   package, then generate exterior or cutaway product renderings. Use Audio to
+   Text in a text reference to append a spoken design direction; existing audio
+   reference cards remain editable.
 3. **Product** — switch between active designs, configure optional size
    variants with automatically scaled materials, and add illustrated making
-   steps.
+   steps. Material units offer mg, g, kg, lb, oz, piece, and bar suggestions,
+   with custom units entered directly. AI imports combine matching ingredients
+   with weight conversion; piece, bar, and custom units combine only with the
+   same unit. Bake totals follow the same rules.
 4. **Bake** — calculate production quantities and costs, then prepare a
    configurable diner handbook in image, HTML, or print/PDF form.
 
 Cards can be exported and imported as JSON for sharing.
 The top navigation can switch the full interface between English and Chinese.
+The gallery button beside Import showcases @Oli's supplied design and menu in
+timber frames, with side-by-side viewing on wide screens and swipe navigation
+on narrow screens. Click the backdrop or press Escape to close the gallery.
+Within either frame, scroll to zoom around the cursor, left-drag to pan, and
+double-click to reset. Keyboard controls support plus/minus, arrows, and 0/Home.
+
+**Ask Muse** is a bilingual AI adviser available throughout the workflow. It uses
+the current dessert brief, text references, materials, variants, making steps and
+(in Bake) batch quantities and calculated totals to answer follow-up questions.
+It offers stage-specific starter questions, source links and optional navigation
+to a suggested stage. It does not change workspace data. Audio attachments are
+transcribed to editable text before sending. Failed questions remain editable for
+retry; closing the panel preserves the conversation, refreshing clears it.
+
+`app/muse-generation.ts` uses the saved browser connection and the Responses
+API (`gpt-5.6-luna`, `store: false`). A bounded text snapshot and
+the five most recent exchanges accompany each question; images, audio assets,
+and the complete stored workspace are excluded. The versioned knowledge base in
+`app/muse-knowledge.ts` contains the actual app workflow plus reviewed,
+paraphrased references from King Arthur Baking, Callebaut and the FDA. The small
+collection is supplied in full on each request, including Chinese conversations;
+this avoids missing relevant guidance through keyword matching. It is a curated
+library, not live web search. Update its date/version and verify source links when
+changing app behavior or refreshing baking guidance. The application validates source IDs
+against this library and returns only its known links. It distinguishes sourced
+facts from proposed recipe experiments and does not promise unverified shelf life.
 
 ## Visual system
 
@@ -86,17 +121,92 @@ beside a small orchard.
 - Nonessential motion is disabled with `prefers-reduced-motion`.
 - The app remains usable before decorative scenery finishes painting.
 
+## Browser model API
+
+Dessert Valley has no application server or bundled model credential. Open the
+key button in the top navigation and enter:
+
+- an OpenAI-compatible API base URL, including its version path (for example,
+  `https://api.openai.com/v1`);
+- the Secret Key accepted by that API.
+
+The browser app appends the appropriate endpoint path for Responses, Images
+(generation and edit), and Audio Transcriptions. The configured service must
+support the models and request shapes used in `app/browser-ai.ts`. Idea polishing
+and Ask Muse use the same saved connection as rendering, recipe advice, material
+import, and transcription. Muse uses the curated references in
+`app/muse-knowledge.ts`; it does not browse live websites.
+
+Every AI request travels directly from the user's browser to the configured
+URL. The base URL is retained in `localStorage`; the Secret Key is retained only
+in that tab's `sessionStorage`. The key is not written to IndexedDB, workspace
+JSON exports, source files, static build output, or container images.
+
+The model provider must permit browser CORS requests from the site's origin,
+including preflight requests and the `Authorization` and `Content-Type`
+headers. Serve Dessert Valley over HTTPS when the model endpoint uses HTTPS;
+browsers will block mixed-content requests in the opposite configuration.
+
+Any credential available to browser JavaScript can also be exposed by a
+compromised browser, malicious extension, or cross-site scripting flaw. Use a
+restricted personal credential, keep the deployment trusted, and clear the API
+settings when using a shared machine.
+
 ## Development
 
 Requirements: Node.js `>=22.13.0`.
 
 ```bash
-npm install
+npm ci
 npm run dev
 npm run lint
-npm run build
-node --test tests/rendered-html.test.mjs
+npm test
 ```
 
-The deployed build uses vinext and the existing Sites configuration in
-`.openai/hosting.json`.
+`npm run build` creates a static site in `dist/`. `npm run preview` serves that
+directory locally for a production-style check.
+
+## Self-hosting
+
+The `dist/` directory can be served by Nginx, Caddy, Apache, an object-storage
+static host, or any other ordinary web server. No Node.js process is required
+after the build.
+
+For a simple VPS deployment:
+
+```bash
+npm ci
+npm run build
+sudo mkdir -p /var/www/dessert-valley
+sudo rsync -a --delete dist/ /var/www/dessert-valley/
+```
+
+Point the web server's document root at `/var/www/dessert-valley`. If the server
+uses SPA fallback rules, route unknown paths to `index.html`.
+
+The included container builds the static assets and serves them with Nginx:
+
+```bash
+docker build -t dessert-valley .
+docker run --rm -p 8080:80 dessert-valley
+```
+
+Then open `http://localhost:8080`. The example configuration is in
+`deploy/nginx.conf`; add TLS at the VPS reverse proxy or load balancer.
+
+## Git and local data
+
+Keep credentials, browser profiles, workspace exports, uploads, local databases,
+and runtime logs outside source control. `.gitignore` and `.dockerignore`
+exclude common local secret and generated-file paths; sanitized `.env*.example`
+and `.dev.vars*.example` templates remain eligible for Git. Ignore rules do not
+remove a file already tracked by Git.
+
+Before committing, inspect `git diff --cached` and `git ls-files -ci
+--exclude-standard`. With Gitleaks installed, scan history using
+`gitleaks git --log-opts="--all --full-history -m" --redact=100`, and scan the
+staged source snapshot as well. If a real secret is found in history, stop the
+push, revoke or rotate it, and agree on a history-cleanup plan first.
+
+This branch retains the static VPS deployment and browser API settings while
+syncing the product features from the `openai` branch through `d5b1e39`.

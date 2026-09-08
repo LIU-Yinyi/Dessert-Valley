@@ -23,10 +23,9 @@ styling, or copied game assets.
 - Node.js `>=22.13.0`
 - npm with the committed `package-lock.json`
 - React 19 and TypeScript in strict mode
-- Next.js App Router APIs and conventions, compiled by vinext/Vite
-- Cloudflare Workers runtime and Cloudflare's Vite plugin
-- Drizzle ORM with an optional D1 binding
-- ESLint 9 using Next.js core-web-vitals and TypeScript rules
+- Vite builds a static React application for Nginx or another static host
+- Model requests run in the browser through the user-configured compatible API
+- ESLint 9 with TypeScript and React Hooks rules
 - Node's built-in test runner
 
 Use npm commands unless the task explicitly requires another tool. Do not
@@ -39,22 +38,15 @@ manager.
   workspace content.
 - `app/globals.css` — design tokens, component styling, responsive behavior,
   motion, and accessibility states.
-- `app/layout.tsx` — root layout, fonts, and request-aware metadata.
-- `app/workspace-storage.ts` — versioned browser persistence using IndexedDB
-  with localStorage fallback and a presence cookie.
-- `app/api/render/route.ts` — server-side dessert image generation.
-- `app/api/plan-advice/route.ts` — server-side structured recipe and production
-  advice.
-- `app/api/handbook-render/route.ts` — server-side diner-handbook imagery.
-- `worker/index.ts` — Cloudflare Worker entry point and image optimization.
-- `db/` and `drizzle/` — optional D1 schema and generated migration metadata.
-- `examples/d1/` — opt-in D1 example; it is not the active application schema.
+- `app/main.tsx` and `index.html` — static application entry points.
+- `app/workspace-storage.ts` — versioned IndexedDB persistence with localStorage fallback.
+- `app/browser-ai.ts` — provider configuration, credential storage and model requests.
+- `app/idea-generation.ts` — validated structured idea generation.
+- `app/muse-generation.ts` and `app/muse-knowledge.ts` — contextual adviser and curated references.
 - `public/` — source-controlled static assets.
-- `tests/rendered-html.test.mjs` — server-render and source-contract tests.
-- `build/sites-vite-plugin.ts` — Sites build integration.
-- `.openai/hosting.json` — Sites project identity and optional binding names.
-- `dist/`, `.vinext/`, `.wrangler/`, and `node_modules/` — generated or local
-  state; never hand-edit or commit them.
+- `tests/` — Node tests for workflows, AI boundaries, storage and the static build.
+- `Dockerfile` and `deploy/nginx.conf` — optional static container hosting.
+- `dist/` and `node_modules/` — generated local state; never hand-edit or commit them.
 
 ## Setup and common commands
 
@@ -84,12 +76,6 @@ a source-contract failure after a successful build, the narrower command is:
 node --test tests/rendered-html.test.mjs
 ```
 
-Generate Drizzle migrations only after intentionally changing `db/schema.ts`:
-
-```bash
-npm run db:generate
-```
-
 ## Architecture and data boundaries
 
 The interface is intentionally concentrated in `app/page.tsx`. Before making a
@@ -107,14 +93,11 @@ Workspace data is local-first. It is written as a versioned envelope through
 5. Preserve import/export compatibility or clearly document a deliberate
    format change.
 
-The three AI endpoints are server-only trust boundaries. Browser code may call
-them, but must never receive provider credentials. Keep provider requests,
-prompt construction, response validation, error normalization, and secret
-lookup inside server routes.
-
-`db/schema.ts` is empty by design. Do not add a D1 dependency merely for
-convenience: use it only when the feature genuinely needs shared server-side
-storage and the Sites binding has been provisioned.
+AI requests go directly to the browser-configured API through `app/browser-ai.ts`.
+Keep the Secret Key in tab sessionStorage only, separate from workspace state,
+IndexedDB, exports, logs, source files and build output. This branch has no
+application server, Cloudflare binding, or bundled provider credential.
+Validate input, provider output and source links, and return safe errors.
 
 ## Coding conventions
 
@@ -166,9 +149,10 @@ scrolling should remain limited to dense tables that require it.
 
 ## AI and image-generation rules
 
-The server reads `OPENAI_API_KEY` from the Cloudflare environment or the
-process environment for local validation. Never use a `NEXT_PUBLIC_*` variable
-for it, embed it in client bundles, print it, or commit it.
+The user supplies their own compatible API URL and Secret Key in Model API
+settings. Never add a default credential, read build-time secrets into Vite,
+or include credentials in source, prompts, exported data or static assets.
+Keep provider models centralized in `app/browser-ai.ts`.
 
 For AI-backed endpoints:
 
@@ -181,8 +165,8 @@ For AI-backed endpoints:
 - Do not persist uploaded or generated sensitive content unless the task
   explicitly introduces an approved storage policy.
 
-Tests intentionally assert important route contracts, including server-only
-secret handling and selected model/API behavior. Update those assertions only
+Tests intentionally assert provider contracts, including isolated credential
+storage, safe failures and selected model/API behavior. Update those assertions only
 when requirements intentionally change, never simply to make a regression pass.
 
 ## Security and privacy
@@ -193,8 +177,7 @@ when requirements intentionally change, never simply to make a regression pass.
   local database files, runtime logs, or provider credentials.
 - Do not log authorization headers, full upstream responses, data URLs, or user
   uploads.
-- Keep `.openai/hosting.json` source-controlled because it identifies the Sites
-  project and binding names; it must not contain secret values.
+- Keep Sites-specific hosting configuration out of this static VPS branch.
 - Sanitize imported JSON and user-provided filenames. Do not trust MIME type
   strings without checking content and size constraints.
 - Maintain the existing safe SVG/image behavior unless a reviewed requirement
@@ -212,7 +195,7 @@ the changed surface before handing off:
   behavior; a full test is optional unless the requested task requires it.
 - TypeScript, React, CSS, worker, config, or dependency changes: run
   `npm run lint` and `npm test`.
-- API-route changes: add or update boundary tests for valid input, invalid
+- Provider-request changes: add or update boundary tests for valid input, invalid
   input, provider failure, malformed provider output, and missing credentials.
 - Persistence changes: test fresh state, existing state, malformed data,
   migration/normalization, and fallback storage.
@@ -228,7 +211,8 @@ CSS, persistence, security, or an API integration rather than only markup.
 
 ## Git and change hygiene
 
-The default branch for this ChatGPT Sites repository is `openai`.
+This is the self-hosted `vps` branch. `openai` contains the Sites version; sync
+product behavior without reintroducing its server or hosting dependencies.
 
 - Inspect `git status` before and after edits.
 - Preserve unrelated user changes and never discard them to make a patch
