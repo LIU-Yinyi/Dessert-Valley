@@ -110,7 +110,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /"Audio", "音频"/);
   assert.match(page, /"Image", "图片"/);
   assert.match(page, /Only rows you confirm are saved/);
-  assert.match(page, /setActiveMaterials\(\(current\) => \[\.\.\.current, \.\.\.rows\]\)/);
+  assert.match(page, /setActiveMaterials\(\(current\) => consolidateMaterials\(\[\.\.\.current, \.\.\.rows\]\)\)/);
   assert.match(page, /fetch\("\/api\/handbook-render"/);
   assert.match(page, /handbookStylePrompt/);
   assert.match(page, /handbookReferenceImage/);

@@ -51,6 +51,8 @@ import {
 } from "react";
 import { transcribeAudioToText } from "./audio-to-text";
 import IdeaAudioInput from "./idea-audio-input";
+import MaterialUnitInput from "./material-unit-input";
+import { compatibleMaterialPrice, consolidateMaterials, convertMaterialAmount, materialGroupKey, normalizeMaterialUnit } from "./material-units";
 import {
   MAX_IDEA_IMAGES,
   MAX_IDEA_TEXT_LENGTH,
@@ -278,7 +280,7 @@ function ideaAlias(idea: IdeaCard, index: number) {
 function materialKey(name: string, unit: string) {
   const normalize = (value: string) =>
     value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
-  return `${normalize(name)}::${normalize(unit)}`;
+  return `${normalize(name)}::${normalizeMaterialUnit(unit)}`;
 }
 
 function materialAmount(value: string) {
@@ -288,7 +290,7 @@ function materialAmount(value: string) {
 
 function formatMaterialAmount(value: number, language: Language) {
   return new Intl.NumberFormat(language === "zh" ? "zh-CN" : "en", {
-    maximumFractionDigits: Math.abs(value) < 1 ? 3 : 2,
+    maximumFractionDigits: 9,
   }).format(value);
 }
 
@@ -1933,12 +1935,14 @@ function formatRecordingTime(totalSeconds: number) {
 function MaterialImportDialog({
   kind,
   idea,
+  existingMaterialNames,
   language,
   onClose,
   onApply,
 }: {
   kind: MaterialImportKind;
   idea: IdeaCard;
+  existingMaterialNames: string[];
   language: Language;
   onClose: () => void;
   onApply: (rows: MaterialRow[]) => void;
@@ -2231,6 +2235,7 @@ function MaterialImportDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           language,
+          existingMaterialNames,
           product: {
             title: idea.title,
             description: idea.prompt,
@@ -2624,12 +2629,11 @@ function MaterialImportDialog({
                     </label>
                     <label>
                       <span>{tr(language, "Unit", "单位")}</span>
-                      <input
+                      <MaterialUnitInput
                         value={row.unit}
-                        onChange={(event) =>
-                          updateRow(row.id, { unit: event.target.value })
-                        }
-                        aria-label={tr(
+                        onChange={(unit) => updateRow(row.id, { unit })}
+                        language={language}
+                        label={tr(
                           language,
                           `${row.name || `Material ${index + 1}`} unit`,
                           `${row.name || `第 ${index + 1} 项材料`}单位`
@@ -3754,13 +3758,13 @@ export default function Home() {
     ]);
 
   const addImportedMaterials = (rows: MaterialRow[]) => {
-    setActiveMaterials((current) => [...current, ...rows]);
+    setActiveMaterials((current) => consolidateMaterials([...current, ...rows]));
     setMaterialImportKind(null);
     notify(
       tr(
         language,
-        `${rows.length} AI-extracted material rows added`,
-        `已添加 ${rows.length} 行 AI 识别材料`
+        "Materials added; matching materials and compatible units combined",
+        "材料已添加，相同材料的兼容单位用量已合并"
       )
     );
   };
@@ -4014,18 +4018,19 @@ export default function Home() {
         draft.materials.forEach((material) => {
           const name = material.name.trim();
           if (!name) return;
-          const unit = material.unit.trim() || "unit";
-          const key = materialKey(name, unit);
-          const current = consolidated.get(key) ?? {
-            key,
+          const unit = normalizeMaterialUnit(material.unit);
+          const group = materialGroupKey(name, unit) ?? `unknown:${idea.id}:${material.id}`;
+          const current = consolidated.get(group) ?? {
+            key: unit ? materialKey(name, unit) : group,
             name,
             unit,
             amounts: {},
           };
           current.amounts[idea.id] =
             (current.amounts[idea.id] ?? 0) +
-            materialAmount(material.amount) * batchScale;
-          consolidated.set(key, current);
+            (convertMaterialAmount(materialAmount(material.amount) * batchScale, unit, current.unit)
+              ?? materialAmount(material.amount) * batchScale);
+          consolidated.set(group, current);
         });
       });
 
@@ -4034,7 +4039,7 @@ export default function Home() {
           (sum, amount) => sum + amount,
           0
         );
-        const price = materialPrices[row.key] ?? 0;
+        const price = materialPrices[row.key] ?? compatibleMaterialPrice(materialPrices, row.name, row.unit);
         return { ...row, total, price, cost: total * price };
       });
     },
@@ -5429,10 +5434,11 @@ export default function Home() {
                             />
                           </td>
                           <td>
-                            <input
+                            <MaterialUnitInput
                               value={row.unit}
-                              onChange={(event) => updateMaterial(row.id, { unit: event.target.value })}
-                              placeholder="g"
+                              onChange={(unit) => updateMaterial(row.id, { unit })}
+                              language={language}
+                              label={tr(language, `${row.name || "Material"} unit`, `${row.name || "材料"}单位`)}
                             />
                           </td>
                           {sizeVariants.map((sizeVariant) => {
@@ -6646,6 +6652,7 @@ export default function Home() {
           key={`${selectedIdea.id}-${materialImportKind}`}
           kind={materialImportKind}
           idea={selectedIdea}
+          existingMaterialNames={materials.map((row) => row.name).filter((name) => name.trim())}
           language={language}
           onClose={() => setMaterialImportKind(null)}
           onApply={addImportedMaterials}

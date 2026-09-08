@@ -17,7 +17,10 @@ parchment work surfaces, crisp countryside scenery, and practical modern forms.
    reference cards remain editable.
 3. **Product** — switch between active designs, configure optional size
    variants with automatically scaled materials, and add illustrated making
-   steps.
+   steps. Material units offer mg, g, kg, lb, oz, piece, and bar suggestions,
+   with custom units entered directly. AI imports combine matching ingredients
+   with weight conversion; piece, bar, and custom units combine only with the
+   same unit. Bake totals follow the same rules.
 4. **Bake** — calculate production quantities and costs, then prepare a
    configurable diner handbook in image, HTML, or print/PDF form.
 

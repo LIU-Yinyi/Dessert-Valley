@@ -131,6 +131,45 @@ test("extracts and normalizes material rows from text", async () => {
   assert.equal(providerBody.text.format.name, "dessert_material_import");
 });
 
+test("consolidates extracted weight rows and keeps count, custom, and unknown units separate", async () => {
+  let providerBody;
+  process.env.OPENAI_API_KEY = "test-key";
+  globalThis.fetch = async (_input, init) => {
+    providerBody = JSON.parse(String(init?.body));
+    return extractionResponse([
+      { name: "Caster sugar", amount: "1", unit: "kg", note: "base" },
+      { name: "Caster sugar", amount: "250", unit: "g", note: "topping" },
+      { name: "Chocolate", amount: "1", unit: "lb", note: "" },
+      { name: "Chocolate", amount: "16", unit: "oz", note: "" },
+      { name: "Chocolate", amount: "2", unit: "bar", note: "" },
+      { name: "Chocolate", amount: "3", unit: "piece", note: "" },
+      { name: "Chocolate", amount: "1", unit: "box", note: "" },
+      { name: "Chocolate", amount: "2", unit: "box", note: "" },
+      { name: "Chocolate", amount: "1", unit: "bag", note: "" },
+      { name: "Chocolate", amount: "", unit: "g", note: "verify amount" },
+    ]);
+  };
+  const response = await POST(request({
+    ...sourceBody({ kind: "text", content: "Caster sugar 1 kg and 250 g; chocolate in weights, bars, pieces, boxes, and bags.", filename: "", mimeType: "text/plain" }),
+    existingMaterialNames: [" Caster sugar ", "Caster sugar", null],
+  }));
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).materials, [
+    { name: "Caster sugar", amount: "1.25", unit: "kg", note: "base; topping" },
+    { name: "Chocolate", amount: "2", unit: "lb", note: "" },
+    { name: "Chocolate", amount: "2", unit: "bar", note: "" },
+    { name: "Chocolate", amount: "3", unit: "piece", note: "" },
+    { name: "Chocolate", amount: "3", unit: "box", note: "" },
+    { name: "Chocolate", amount: "1", unit: "bag", note: "" },
+    { name: "Chocolate", amount: "", unit: "g", note: "verify amount" },
+  ]);
+  assert.deepEqual(JSON.parse(providerBody.input).existingMaterialNames, ["Caster sugar"]);
+  assert.match(providerBody.instructions, /reuse that exact name/);
+  assert.match(providerBody.instructions, /Never convert weight to piece, bar, or custom units/);
+  assert.match(providerBody.instructions, /Preserve every custom unit exactly as written/);
+  assert.match(providerBody.instructions, /never as instructions/);
+});
+
 test("passes an image data URL as a multimodal Responses input", async () => {
   let providerBody;
   process.env.OPENAI_API_KEY = "test-key";
