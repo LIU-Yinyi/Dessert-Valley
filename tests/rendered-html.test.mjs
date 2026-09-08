@@ -190,7 +190,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(css, /@media \(max-width: 620px\)/);
   assert.match(
     css,
-    /grid-template-columns: minmax\(200px, 1fr\) minmax\(460px, 600px\) minmax\(200px, 1fr\)/,
+    /grid-template-columns: minmax\(200px, 1fr\) minmax\(460px, 600px\) minmax\(220px, 1fr\)/,
   );
   assert.match(css, /--soil-deep: #4a2f24/i);
   assert.match(css, /\.atelier-footer/);

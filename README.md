@@ -26,6 +26,9 @@ parchment work surfaces, crisp countryside scenery, and practical modern forms.
 
 Cards can be exported and imported as JSON for sharing.
 The top navigation can switch the full interface between English and Chinese.
+The gallery button beside Import showcases @Oli's supplied design and menu in
+timber frames, with side-by-side viewing on wide screens and swipe navigation
+on narrow screens. Click the backdrop or press Escape to close the gallery.
 
 ## Visual system
 

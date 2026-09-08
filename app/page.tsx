@@ -18,6 +18,7 @@ import {
   FileImage,
   FileText,
   ImagePlus,
+  Images,
   Import,
   Layers3,
   Languages,
@@ -44,6 +45,7 @@ import {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -984,6 +986,108 @@ function useDialogFocus(onClose: () => void) {
   }, [onClose]);
 
   return dialogRef;
+}
+
+function MasterpieceGallery({ language, onClose }: {
+  language: Language;
+  onClose: () => void;
+}) {
+  const dialogRef = useDialogFocus(onClose);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [activeImage, setActiveImage] = useState(0);
+  const exhibits = [
+    {
+      src: "/gallery/oli-design.jpg",
+      width: 1284,
+      height: 2506,
+      label: tr(language, "Design", "设计"),
+      title: tr(language, "Yogurt Tanghulu", "酸奶糖葫芦"),
+      alt: tr(language, "Oli's Dessert Valley design: a glossy red apple-shaped yogurt dessert with a little face.", "Oli 的甜点谷设计：带有可爱表情的亮红色苹果造型酸奶甜点。"),
+      icon: Pencil,
+    },
+    {
+      src: "/gallery/oli-menu.jpg",
+      width: 1024,
+      height: 1536,
+      label: tr(language, "Menu", "菜单"),
+      title: tr(language, "Oli's dessert collection", "Oli 的甜点集"),
+      alt: tr(language, "Oli's illustrated menu with coconut mousse, yogurt tanghulu, little tiger espresso, Cinnamoroll canelé, and butter cookies.", "Oli 的手绘风菜单：海豹椰子酸奶慕斯、酸奶苹果糖葫芦、小脑斧意式咖啡、玉桂狗可露丽和小丸子黄油饼干。"),
+      icon: BookOpen,
+    },
+  ];
+
+  const showImage = (index: number) => {
+    const track = trackRef.current;
+    if (!track || track.scrollWidth <= track.clientWidth) return;
+    const next = Math.max(0, Math.min(exhibits.length - 1, index));
+    track.scrollTo({
+      left: next * (track.scrollWidth - track.clientWidth),
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+    setActiveImage(next);
+  };
+
+  return (
+    <div className="modal-backdrop masterpiece-backdrop" role="presentation"
+      onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section ref={dialogRef} className="pixel-modal masterpiece-modal" role="dialog" aria-modal="true"
+        aria-labelledby="masterpiece-gallery-title" aria-describedby="masterpiece-gallery-credit">
+        <header className="modal-header masterpiece-heading">
+          <span className="modal-icon"><Images size={22} aria-hidden="true" /></span>
+          <div>
+            <span className="masterpiece-eyebrow">Dessert Valley</span>
+            <h2 id="masterpiece-gallery-title">{tr(language, "Masterpiece gallery", "甜点作品画廊")}</h2>
+          </div>
+          <button className="square-button" type="button" onClick={onClose}
+            aria-label={tr(language, "Close gallery", "关闭画廊")}><X size={20} /></button>
+        </header>
+        <div className="masterpiece-body">
+          <div className="masterpiece-track" ref={trackRef} tabIndex={0}
+            role="region" aria-label={tr(language, "Design and menu showcase", "设计与菜单作品展示")}
+            onScroll={(event) => {
+              const track = event.currentTarget;
+              const maximum = track.scrollWidth - track.clientWidth;
+              if (maximum > 0) setActiveImage(track.scrollLeft >= maximum / 2 ? 1 : 0);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                event.preventDefault();
+                showImage(activeImage + (event.key === "ArrowRight" ? 1 : -1));
+              }
+            }}>
+            {exhibits.map((exhibit, index) => {
+              const Icon = exhibit.icon;
+              return (
+                <figure className="masterpiece-item" key={exhibit.src}>
+                  <div className="masterpiece-frame">
+                    <NextImage src={exhibit.src} alt={exhibit.alt} width={exhibit.width} height={exhibit.height}
+                      unoptimized draggable={false} />
+                  </div>
+                  <figcaption className="masterpiece-caption">
+                    <span className="masterpiece-number" aria-hidden="true">0{index + 1}</span>
+                    <div><h3>{exhibit.label}</h3><p>{exhibit.title}</p></div>
+                    <Icon size={21} aria-hidden="true" />
+                  </figcaption>
+                </figure>
+              );
+            })}
+          </div>
+          <div className="masterpiece-pagination" role="group" aria-label={tr(language, "Choose gallery image", "选择画廊图片")}>
+            {exhibits.map((exhibit, index) => (
+              <button type="button" key={exhibit.src} aria-pressed={activeImage === index} onClick={() => showImage(index)}>
+                <span aria-hidden="true">0{index + 1}</span> {exhibit.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <footer className="masterpiece-credit" id="masterpiece-gallery-credit">
+          <span className="masterpiece-signature">@Oli</span>
+          <span>{tr(language, "A girl who loves baking.", "一个热爱烘焙的女孩。")}</span>
+          <Sprout size={22} aria-hidden="true" />
+        </footer>
+      </section>
+    </div>
+  );
 }
 
 function CanvasPad({
@@ -2927,6 +3031,8 @@ export default function Home() {
   const [language, setLanguage] = useState<Language>("en");
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
   const [stage, setStage] = useState<Stage>("idea");
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const closeGallery = useCallback(() => setGalleryOpen(false), []);
   const [ideas, setIdeas] = useState<IdeaCard[]>(seedIdeas);
   const [selectedIdeaId, setSelectedIdeaId] = useState(1);
   const [ideaText, setIdeaText] = useState("");
@@ -4485,7 +4591,18 @@ export default function Home() {
         </nav>
         <div className="top-actions">
           <button
-            className="square-button"
+            className="square-button gallery-trigger"
+            type="button"
+            onClick={() => setGalleryOpen(true)}
+            aria-label={tr(language, "Open masterpiece gallery", "打开作品画廊")}
+            data-tip={tr(language, "Masterpiece gallery", "作品画廊")}
+            aria-haspopup="dialog"
+            aria-expanded={galleryOpen}
+          >
+            <Images size={16} />
+          </button>
+          <button
+            className="square-button import-cards-button"
             type="button"
             onClick={() => importRef.current?.click()}
             aria-label={tr(language, "Import cards", "导入卡片")}
@@ -6619,6 +6736,7 @@ export default function Home() {
         </aside>
       )}
 
+      {galleryOpen && <MasterpieceGallery language={language} onClose={closeGallery} />}
       {ideaEditor && (
         <IdeaEditor
           key={ideaEditor.id}
