@@ -53,6 +53,7 @@ import {
 } from "react";
 import { transcribeAudioToText } from "./audio-to-text";
 import IdeaAudioInput from "./idea-audio-input";
+import GalleryImageViewer from "./gallery-image-viewer";
 import MaterialUnitInput from "./material-unit-input";
 import { compatibleMaterialPrice, consolidateMaterials, convertMaterialAmount, materialGroupKey, normalizeMaterialUnit } from "./material-units";
 import {
@@ -1060,8 +1061,8 @@ function MasterpieceGallery({ language, onClose }: {
               return (
                 <figure className="masterpiece-item" key={exhibit.src}>
                   <div className="masterpiece-frame">
-                    <NextImage src={exhibit.src} alt={exhibit.alt} width={exhibit.width} height={exhibit.height}
-                      unoptimized draggable={false} />
+                    <GalleryImageViewer src={exhibit.src} alt={exhibit.alt} width={exhibit.width} height={exhibit.height}
+                      language={language} />
                   </div>
                   <figcaption className="masterpiece-caption">
                     <span className="masterpiece-number" aria-hidden="true">0{index + 1}</span>

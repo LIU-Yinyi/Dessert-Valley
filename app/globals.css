@@ -1747,11 +1747,31 @@ input[type="file"] {
   box-shadow: inset 0 0 0 3px var(--cream-deep), inset 0 0 0 6px var(--paper-hi), 5px 5px 0 rgba(74, 47, 36, .22);
 }
 
-.masterpiece-frame img {
+.gallery-image-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+}
+
+.gallery-image-viewport.dragging {
+  cursor: grabbing;
+}
+
+.gallery-image-viewport:focus-visible {
+  outline: 3px solid var(--leaf);
+  outline-offset: 2px;
+}
+
+.gallery-image-viewport img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   image-rendering: auto;
+  transform-origin: 0 0;
+  pointer-events: none;
 }
 
 .masterpiece-caption {

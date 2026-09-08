@@ -29,6 +29,8 @@ The top navigation can switch the full interface between English and Chinese.
 The gallery button beside Import showcases @Oli's supplied design and menu in
 timber frames, with side-by-side viewing on wide screens and swipe navigation
 on narrow screens. Click the backdrop or press Escape to close the gallery.
+Within either frame, scroll to zoom around the cursor, left-drag to pan, and
+double-click to reset. Keyboard controls support plus/minus, arrows, and 0/Home.
 
 ## Visual system
 
