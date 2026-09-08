@@ -1,212 +1,137 @@
-# Dessert Valley
+<p align="center">
+  <img src="docs/readme/dessert-valley-cover.png" alt="Dessert Valley: an original pixel-art pastry atelier beside an orchard and river" width="100%">
+</p>
 
-Dessert Valley is a responsive, browser-only dessert-planning workspace for
-moving from a loose idea to a visual design, flexible recipe, production plan,
-and diner handbook.
-It uses an original **riverside orchard atelier** identity: timber signboards,
-parchment work surfaces, crisp countryside scenery, and practical modern forms.
+<h1 align="center">🌷 Dessert Valley · 甜点手册</h1>
+<p align="center"><strong>Dream it. Shape it. Bake a little joy.</strong><br>A cozy dessert atelier for turning a spark of inspiration into a design, a recipe, and a beautiful menu.</p>
+<p align="center">🌱 Idea → 🎨 Design → 🍰 Product → 🧑‍🍳 Bake<br>✨ AI-assisted creativity · 🌏 English / 中文 · 💾 Local-first workspace</p>
+<p align="center">
+  <a href="https://github.com/LIU-Yinyi/Dessert-Valley/tree/openai">☁️ OpenAI Sites edition</a> ·
+  <a href="https://github.com/LIU-Yinyi/Dessert-Valley/tree/vps">🏡 VPS edition</a> ·
+  <a href="#quick-start">🚀 Get started</a>
+</p>
 
-## Product flow
+> 🏡 **You’re on `vps` — the self-hosted edition.** Bring your own compatible API connection using the key button on the left. Looking for the Sites version? [Switch to `openai` →](https://github.com/LIU-Yinyi/Dessert-Valley/tree/openai)
 
-1. **Idea** — type a dessert direction or transcribe a voice recording into
-   editable text, and attach up to four reference images. Add to gallery uses AI
-   to polish the dessert name, description and tags and select an attached cover
-   image. Other attached images remain available in the Design Dock.
-2. **Design** — combine text, image, and empty-canvas references into one intent
-   package, then generate exterior or cutaway product renderings. Use Audio to
-   Text in a text reference to append a spoken design direction; existing audio
-   reference cards remain editable.
-3. **Product** — switch between active designs, configure optional size
-   variants with automatically scaled materials, and add illustrated making
-   steps. Material units offer mg, g, kg, lb, oz, piece, and bar suggestions,
-   with custom units entered directly. AI imports combine matching ingredients
-   with weight conversion; piece, bar, and custom units combine only with the
-   same unit. Bake totals follow the same rules.
-4. **Bake** — calculate production quantities and costs, then prepare a
-   configurable diner handbook in image, HTML, or print/PDF form.
+## 🍎 From a little idea to Oli’s dessert table
 
-Cards can be exported and imported as JSON for sharing.
-The top navigation can switch the full interface between English and Chinese.
-The gallery button beside Import showcases @Oli's supplied design and menu in
-timber frames, with side-by-side viewing on wide screens and swipe navigation
-on narrow screens. Click the backdrop or press Escape to close the gallery.
-Within either frame, scroll to zoom around the cursor, left-drag to pan, and
-double-click to reset. Keyboard controls support plus/minus, arrows, and 0/Home.
+A glossy **Yogurt Tanghulu · 酸奶苹果糖葫芦** becomes the star of a warm, illustrated dessert menu. These two examples were supplied by **Oli** — the design on the left, the finished menu on the right. Thank you, Oli! 💛
 
-**Ask Muse** is a bilingual AI adviser available throughout the workflow. It uses
-the current dessert brief, text references, materials, variants, making steps and
-(in Bake) batch quantities and calculated totals to answer follow-up questions.
-It offers stage-specific starter questions, source links and optional navigation
-to a suggested stage. It does not change workspace data. Audio attachments are
-transcribed to editable text before sending. Failed questions remain editable for
-retry; closing the panel preserves the conversation, refreshing clears it.
+<table>
+  <tr>
+    <td align="center" width="50%"><strong>🎨 The dessert design</strong></td>
+    <td align="center" width="50%"><strong>📜 The dessert menu</strong></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="docs/readme/oli-yogurt-tanghulu.jpg"><img src="docs/readme/oli-yogurt-tanghulu.jpg" alt="Oli’s Yogurt Tanghulu design in the Dessert Valley workspace: a glossy apple-shaped yogurt dessert with a tiny face" height="540"></a></td>
+    <td align="center"><a href="docs/readme/oli-menu.jpg"><img src="docs/readme/oli-menu.jpg" alt="Oli’s illustrated Dessert Valley menu with coconut mousse, yogurt tanghulu, little tiger espresso, cannelé and butter cookies" height="540"></a></td>
+  </tr>
+  <tr><td align="center" colspan="2"><sub>Design &amp; menu examples: <strong>Oli</strong>. Click either image for the full view.</sub></td></tr>
+</table>
 
-`app/muse-generation.ts` uses the saved browser connection and the Responses
-API (`gpt-5.6-luna`, `store: false`). A bounded text snapshot and
-the five most recent exchanges accompany each question; images, audio assets,
-and the complete stored workspace are excluded. The versioned knowledge base in
-`app/muse-knowledge.ts` contains the actual app workflow plus reviewed,
-paraphrased references from King Arthur Baking, Callebaut and the FDA. The small
-collection is supplied in full on each request, including Chinese conversations;
-this avoids missing relevant guidance through keyword matching. It is a curated
-library, not live web search. Update its date/version and verify source links when
-changing app behavior or refreshing baking guidance. The application validates source IDs
-against this library and returns only its known links. It distinguishes sourced
-facts from proposed recipe experiments and does not promise unverified shelf life.
+You can also explore these examples in the app’s **🖼️ Masterpiece gallery**: zoom, pan, and compare them side by side on a wide screen, or swipe between them on mobile.
 
-## Visual system
+## 🪄 A small atelier, from inspiration to serving
 
-The implementation follows [`DESIGN_STYLE.md`](./DESIGN_STYLE.md) without
-copying any existing game. The original motif is a riverside pastry workshop
-beside a small orchard.
+- **🌱 Catch the spark.** Write a brief, turn voice notes into editable text, and attach up to four reference images. AI helps shape a title, description, tags, and cover selection.
+- **🎨 Give it a shape.** Gather text, images, and canvas sketches in the Design Dock. Explore exterior and cutaway renderings from the same intent package.
+- **⚖️ Build the recipe.** Create size variants, scale materials, import ingredients, and organize illustrated making steps. Work in weight, pieces, bars, or your own units.
+- **🧑‍🍳 Plan the bake.** Set batch quantities, consolidate ingredients, enter unit prices, and estimate ingredient costs.
+- **📖 Set the table.** Compose a diner handbook with a chosen style and page count, then export images, HTML, or print/PDF.
+- **💬 Ask Muse.** Get stage-aware advice with curated references while keeping control of your workspace. Switch the whole interface between English and Chinese.
+- **💾 Keep your notebook.** Save locally in your browser and import/export workspace JSON to carry your ideas elsewhere.
 
-### Tokens
+## 🧭 Four stops along the river
 
-- **Soil / outlines:** `#4A2F24`
-- **Wood:** `#70452E`, `#A86F3D`, `#C98749`
-- **Parchment:** `#F4DFA8`, `#FFF0BD`, `#FFF7D8`
-- **Nature:** `#3F713D`, `#78A84B`
-- **Sky / water:** `#88C9D9`, `#397C8D`
-- **Accents:** wheat `#D9A441`, barn red `#A84E43`, plum `#704A68`
-- **Display type:** Geist Mono with system monospace fallbacks
-- **Body type:** Geist with humanist system fallbacks
-- **Construction:** 2–4 px outlines, inset highlights, and hard-edged offset
-  shadows; no glass effects or soft floating cards
+<table>
+  <tr>
+    <td width="50%"><strong>🌱 01 · Idea — gather</strong><p>Collect a direction and browse your dessert garden.</p><a href="docs/readme/stage-idea.png"><img src="docs/readme/stage-idea.png" alt="Idea gallery with jasmine, strawberry and pistachio dessert concept cards"></a></td>
+    <td width="50%"><strong>🎨 02 · Design — shape</strong><p>Bring references together and explore a product rendering.</p><a href="docs/readme/stage-design.png"><img src="docs/readme/stage-design.png" alt="Design Dock with a text brief, reference image and moonlit jasmine dessert rendering"></a></td>
+  </tr>
+  <tr>
+    <td><strong>🍰 03 · Product — build</strong><p>Turn the design into materials and scaled size variants.</p><a href="docs/readme/stage-product.png"><img src="docs/readme/stage-product.png" alt="Product material table with automatically scaled classic and petite quantities"></a></td>
+    <td><strong>🧑‍🍳 04 · Bake — make</strong><p>Plan batches and consolidate ingredients for bake day.</p><a href="docs/readme/stage-bake.png"><img src="docs/readme/stage-bake.png" alt="Bake workspace with two production batches, consolidated materials and an ingredient cost estimate"></a></td>
+  </tr>
+</table>
 
-### Reusable interface vocabulary
+<sub>Selected-area browser captures of an illustrative workspace using the bundled sample artwork. Quantities are demonstration data, not a tested recipe. Click a panel to inspect it at full size.</sub>
 
-- `.button`, `.square-button` — tactile pixel buttons with hover, focus,
-  pressed, loading, and disabled states
-- `.pixel-panel` — reusable parchment panel with timber-weight framing
-- `.stage-nav` — compact wooden-noticeboard workflow navigation
-- `.stage-intro`, `.section-heading` — consistent section-heading system
-- `.idea-tile`, `.reference-card`, `.step-card`, `.handbook-card` — tactile
-  card family
-- `.view-switch`, `.bake-switch` — segmented selection controls
-- `.pixel-modal`, `.modal-backdrop` — keyboard-contained modal system
-- `.alias-tip`, `[data-tip]` — mouse and keyboard accessible tooltips
-- `.toast`, `.empty-state`, `.render-loader`, `.field-error` — feedback,
-  empty, loading, and error states
-- `.world-scenery`, `.atelier-footer` — original layered environment framing
+## 🏡 Two homes for the same atelier
 
-## Responsive composition
+The dessert workflow, Muse, bilingual interface, and workspace tools are shared. Hosting and API-key handling differ:
 
-- **Desktop / laptop:** the header uses equal outer columns around a centered
-  workflow board. Design and chef workspaces use balanced columns.
-- **Tablet:** navigation moves to a centered second row; dense workspaces stack
-  while retaining the same panel rhythm.
-- **Mobile:** content becomes single-column, decorative scenery is reduced,
-  modals fit the viewport, and primary controls retain 44 px touch targets.
-- Horizontal scrolling is limited to data tables that require it.
+| | ☁️ `openai` · OpenAI Sites | 🏡 `vps` · Self-hosted |
+| :-- | :-- | :-- |
+| **Host** | OpenAI Sites, with server routes in a Worker | Any static host or your VPS; optional Nginx container |
+| **API key** | The owner binds `OPENAI_API_KEY` as a server-side Sites secret | Each user enters an API base URL and key with the **🔑 button at the top-left**, beside the logo |
+| **AI requests** | Browser → app server → OpenAI | Browser → configured OpenAI-compatible API |
+| **Visitor setup** | No visitor API-key entry | Configure a connection before using AI features |
+| **Key storage** | Server runtime secret; never sent to the browser | This tab’s `sessionStorage`; separate from workspace data |
+| **Provider requirement** | The configured OpenAI account supports the app’s models | Compatible Responses, Images and Audio Transcriptions endpoints, with browser **CORS** support |
 
-## Accessibility checklist
+<a id="quick-start"></a>
 
-- [x] Semantic workflow navigation and logical page headings
-- [x] Skip-to-workspace link
-- [x] Visible high-contrast focus indicators
-- [x] Keyboard-operable controls and tooltip content
-- [x] Escape-to-close and trapped keyboard focus in modals
-- [x] Accessible names for icon-only controls
-- [x] Descriptive text alternatives for meaningful product imagery
-- [x] Visible form labels, success, empty, loading, and error states
-- [x] Reduced-motion mode
-- [x] No automatic audio or rapidly flashing content
-- [x] Palette designed for WCAG 2.2 AA contrast where practical
+## 🚀 Start the VPS edition
 
-## Performance notes
-
-- Ambient artwork is CSS-based and uses no animation library.
-- Product imagery has fixed layout boxes to prevent cumulative layout shift.
-- Motion is limited to stepped cloud drift and short interaction feedback.
-- Nonessential motion is disabled with `prefers-reduced-motion`.
-- The app remains usable before decorative scenery finishes painting.
-
-## Browser model API
-
-Dessert Valley has no application server or bundled model credential. Open the
-key button in the top navigation and enter:
-
-- an OpenAI-compatible API base URL, including its version path (for example,
-  `https://api.openai.com/v1`);
-- the Secret Key accepted by that API.
-
-The browser app appends the appropriate endpoint path for Responses, Images
-(generation and edit), and Audio Transcriptions. The configured service must
-support the models and request shapes used in `app/browser-ai.ts`. Idea polishing
-and Ask Muse use the same saved connection as rendering, recipe advice, material
-import, and transcription. Muse uses the curated references in
-`app/muse-knowledge.ts`; it does not browse live websites.
-
-Every AI request travels directly from the user's browser to the configured
-URL. The base URL is retained in `localStorage`; the Secret Key is retained only
-in that tab's `sessionStorage`. The key is not written to IndexedDB, workspace
-JSON exports, source files, static build output, or container images.
-
-The model provider must permit browser CORS requests from the site's origin,
-including preflight requests and the `Authorization` and `Content-Type`
-headers. Serve Dessert Valley over HTTPS when the model endpoint uses HTTPS;
-browsers will block mixed-content requests in the opposite configuration.
-
-Any credential available to browser JavaScript can also be exposed by a
-compromised browser, malicious extension, or cross-site scripting flaw. Use a
-restricted personal credential, keep the deployment trusted, and clear the API
-settings when using a shared machine.
-
-## Development
-
-Requirements: Node.js `>=22.13.0`.
+Requires **Node.js ≥ 22.13.0** and npm.
 
 ```bash
+git clone --branch vps https://github.com/LIU-Yinyi/Dessert-Valley.git
+cd Dessert-Valley
 npm ci
 npm run dev
-npm run lint
-npm test
 ```
 
-`npm run build` creates a static site in `dist/`. `npm run preview` serves that
-directory locally for a production-style check.
+Open the local URL printed by Vite. Click the **🔑 key button at the top-left, next to Dessert Valley**, enter your compatible API base URL (including `/v1` where required) and secret key, then save the connection.
 
-## Self-hosting
+<p><img src="docs/readme/vps-api-button.png" alt="The VPS navigation: the API-key button sits immediately beside the Dessert Valley logo on the left" width="400"></p>
 
-The `dist/` directory can be served by Nginx, Caddy, Apache, an object-storage
-static host, or any other ordinary web server. No Node.js process is required
-after the build.
+The provider must support the endpoints and models in [`app/browser-ai.ts`](app/browser-ai.ts), and allow **CORS** from your website’s origin, including `Authorization` and `Content-Type` headers. Merely offering a chat-completions endpoint is not enough for every feature.
 
-For a simple VPS deployment:
+### 📦 Build & self-host
 
 ```bash
-npm ci
 npm run build
-sudo mkdir -p /var/www/dessert-valley
-sudo rsync -a --delete dist/ /var/www/dessert-valley/
+npm run preview
 ```
 
-Point the web server's document root at `/var/www/dessert-valley`. If the server
-uses SPA fallback rules, route unknown paths to `index.html`.
+Publish the generated **`dist/`** directory through Nginx, Caddy, or another static web server. No Node.js application process is needed after the build. Use HTTPS for a public deployment.
 
-The included container builds the static assets and serves them with Nginx:
+Or use the included container:
 
 ```bash
 docker build -t dessert-valley .
 docker run --rm -p 8080:80 dessert-valley
 ```
 
-Then open `http://localhost:8080`. The example configuration is in
-`deploy/nginx.conf`; add TLS at the VPS reverse proxy or load balancer.
+Visit `http://localhost:8080`. The container serves static files using [`deploy/nginx.conf`](deploy/nginx.conf); configure HTTPS at your reverse proxy.
 
-## Git and local data
+### 🧪 Development checks
 
-Keep credentials, browser profiles, workspace exports, uploads, local databases,
-and runtime logs outside source control. `.gitignore` and `.dockerignore`
-exclude common local secret and generated-file paths; sanitized `.env*.example`
-and `.dev.vars*.example` templates remain eligible for Git. Ignore rules do not
-remove a file already tracked by Git.
+```bash
+npm run lint
+npm test
+```
 
-Before committing, inspect `git diff --cached` and `git ls-files -ci
---exclude-standard`. With Gitleaks installed, scan history using
-`gitleaks git --log-opts="--all --full-history -m" --redact=100`, and scan the
-staged source snapshot as well. If a real secret is found in history, stop the
-push, revoke or rotate it, and agree on a history-cleanup plan first.
+`npm test` builds the app and runs the Node test suite. No real API key is required for these checks.
 
-This branch retains the static VPS deployment and browser API settings while
-syncing the product features from the `openai` branch through `d5b1e39`.
+## 🔐 Your workspace & your keys
+
+Workspace content is stored in **IndexedDB**, with a `localStorage` fallback. Export important projects as JSON for a portable backup. AI actions send the relevant input to the configured provider; local storage does not mean every feature works offline.
+
+On `openai`, **`.openai/hosting.json` is a non-secret hosting manifest**. It currently contains a Sites project identifier and empty `d1` / `r2` bindings — no API key, password, or access token. The Sites build reads this file, so it stays tracked. It is absent from the `vps` branch. Keep credentials in runtime secrets or ignored local configuration, never in this manifest.
+
+On `vps`, the API base URL stays in `localStorage`, while the key stays in tab `sessionStorage` and is excluded from workspace exports. Browser storage does not hide a key from scripts running in that browser. OpenAI recommends keeping API keys on the server; this edition deliberately uses a personal bring-your-own-key connection. For a shared public service using an owner-funded key, choose the Sites edition with a server-side secret. See [OpenAI’s authentication guidance](https://developers.openai.com/api/reference/overview#authentication).
+
+The repository’s ignore rules exclude common secret files, local databases, uploads, exports, logs, and build output. Only sanitized `*.example` configuration templates belong in Git. Review staged changes before pushing; adding an ignore rule does not remove files already in history.
+
+## 🌾 Behind the scenery
+
+Built with **React 19 · TypeScript · Vite**, with parchment panels, timber frames, orchard greens, and keyboard-friendly controls. The original riverside atelier visual system is documented in [DESIGN_STYLE.md](DESIGN_STYLE.md).
+
+- 🛠️ [Development, architecture & operational notes](docs/DEVELOPMENT.md)
+- 🎨 [Artwork credits & cover-generation prompt](docs/readme/ARTWORK.md)
+- 🖼️ Dessert design and menu examples: **Oli**
+- ✨ Cover: original artwork generated with **GPT Image** for Dessert Valley
+
+<p align="center">🌷 Made for small ideas, beautiful desserts, and the joy of making things.</p>
