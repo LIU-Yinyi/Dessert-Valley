@@ -28,7 +28,6 @@ import {
   Pencil,
   Plus,
   Redo2,
-  Send,
   Sparkles,
   Square,
   Sprout,
@@ -55,6 +54,8 @@ import { transcribeAudioToText } from "./audio-to-text";
 import IdeaAudioInput from "./idea-audio-input";
 import GalleryImageViewer from "./gallery-image-viewer";
 import MaterialUnitInput from "./material-unit-input";
+import MuseAdviser from "./muse-adviser";
+import { normalizeMuseContext } from "./muse-context";
 import { compatibleMaterialPrice, consolidateMaterials, convertMaterialAmount, materialGroupKey, normalizeMaterialUnit } from "./material-units";
 import {
   MAX_IDEA_IMAGES,
@@ -378,14 +379,6 @@ function WorkspaceImage({
 
 function tr(language: Language, english: string, chinese: string) {
   return language === "zh" ? chinese : english;
-}
-
-function agentGreeting(language: Language) {
-  return tr(
-    language,
-    "Hello! Ask about texture, temperature, substitutions or workflow.",
-    "你好！可以询问质地、温度、替代材料或制作流程。"
-  );
 }
 
 function applyStateUpdate<T>(current: T, update: StateUpdate<T>) {
@@ -3077,9 +3070,6 @@ export default function Home() {
     useState<MaterialImportKind | null>(null);
   const [stepEditor, setStepEditor] = useState<PlanStep | "new" | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
-  const [agentInput, setAgentInput] = useState("");
-  const [agentMessages, setAgentMessages] = useState([agentGreeting("en")]);
-  const [agentAudioName, setAgentAudioName] = useState("");
   const [bakeMode, setBakeMode] = useState<"chef" | "diner">("chef");
   const [productionRows, setProductionRows] = useState<ProductionRow[]>(() =>
     seedProductionRows.map((row) => ({ ...row }))
@@ -3238,16 +3228,6 @@ export default function Home() {
     if (storedLanguage === "en" || storedLanguage === "zh") {
       const timer = window.setTimeout(() => {
         setLanguage(storedLanguage);
-        setAgentMessages((current) =>
-          current.length === 1 &&
-          current.some(
-            (message) =>
-              message === agentGreeting("en") ||
-              message === agentGreeting("zh")
-          )
-            ? [agentGreeting(storedLanguage)]
-            : current
-        );
       }, 0);
       return () => window.clearTimeout(timer);
     }
@@ -3389,13 +3369,6 @@ export default function Home() {
   const toggleLanguage = () => {
     const nextLanguage: Language = language === "en" ? "zh" : "en";
     setLanguage(nextLanguage);
-    setAgentMessages((current) =>
-      current.length === 1 &&
-      (current[0] === agentGreeting("en") ||
-        current[0] === agentGreeting("zh"))
-        ? [agentGreeting(nextLanguage)]
-        : current
-    );
   };
 
   useEffect(() => {
@@ -4515,28 +4488,6 @@ export default function Home() {
         )
       );
     }
-  };
-
-  const sendAgentMessage = () => {
-    if (!agentInput.trim() && !agentAudioName) return;
-    const userMessage =
-      agentInput.trim() ||
-      tr(
-        language,
-        `Voice note: ${agentAudioName}`,
-        `语音记录：${agentAudioName}`
-      );
-    setAgentMessages((current) => [
-      ...current,
-      userMessage,
-      tr(
-        language,
-        "Muse suggests testing one small portion first, then recording temperature and texture before scaling.",
-        "缪斯建议先测试一个小份，再记录温度与质地后进行放大。"
-      ),
-    ]);
-    setAgentInput("");
-    setAgentAudioName("");
   };
 
   return (
@@ -6676,66 +6627,33 @@ export default function Home() {
         {agentOpen ? <X size={20} /> : <Bot size={21} />}
         {!agentOpen && <span>{tr(language, "Ask Muse", "问问缪斯")}</span>}
       </button>
-      {agentOpen && (
-        <aside
-          id="pastry-agent-window"
-          className="agent-window"
-          role="dialog"
-          aria-label={tr(language, "Pastry agent", "甜点助手")}
-        >
-          <header>
-            <span className="panel-icon muse"><Bot size={17} /></span>
-            <span>
-              <strong>{tr(language, "Pastry agent", "甜点助手")}</strong>
-              <small>{tr(language, "floating helper", "浮动助手")}</small>
-            </span>
-            <button
-              className="square-button mini"
-              type="button"
-              onClick={() => setAgentOpen(false)}
-              aria-label={tr(language, "Close chat", "关闭对话")}
-            >
-              <X size={13} />
-            </button>
-          </header>
-          <div className="agent-messages">
-            {agentMessages.map((message, index) => (
-              <p className={cn(index % 2 === 1 && "user")} key={`${message}-${index}`}>{message}</p>
-            ))}
-          </div>
-          {agentAudioName && <div className="audio-attached"><AudioLines size={13} /> {agentAudioName}</div>}
-          <div className="agent-composer">
-            <label
-              className="square-button"
-              data-tip={tr(language, "Attach audio", "添加语音")}
-            >
-              <Mic size={15} />
-              <input
-                type="file"
-                accept="audio/*"
-                onChange={(event) => {
-                  setAgentAudioName(event.target.files?.[0]?.name ?? "");
-                  event.target.value = "";
-                }}
-              />
-            </label>
-            <input
-              value={agentInput}
-              onChange={(event) => setAgentInput(event.target.value)}
-              onKeyDown={(event) => event.key === "Enter" && sendAgentMessage()}
-              placeholder={tr(language, "Ask about this dessert…", "询问这个甜点…")}
-            />
-            <button
-              className="square-button send"
-              type="button"
-              onClick={sendAgentMessage}
-              aria-label={tr(language, "Send", "发送")}
-            >
-              <Send size={15} />
-            </button>
-          </div>
-        </aside>
-      )}
+      <MuseAdviser
+        open={agentOpen}
+        language={language}
+        context={normalizeMuseContext({
+          stage,
+          ideaDraft: stage === "idea" ? ideaText : "",
+          dessert: { title: selectedIdea.title, description: selectedIdea.prompt, tags: selectedIdea.tags, hasImage: Boolean(selectedIdea.image) },
+          references: references.map(({ kind, title, content }) => ({ kind, title, content })),
+          rendering: { available: Boolean(renderResult), stale: renderingIsStale, view: renderResult?.view },
+          materials,
+          variants: sizeVariants.map((item, index) => ({ ...item, scale: variantScales[index].scale })),
+          steps: planSteps,
+          batches: stage === "bake" ? productionRows.map((batch) => ({
+            dessert: ideas.find((idea) => idea.id === batch.ideaId)?.title,
+            variant: productionVariantsByIdea[batch.ideaId]?.find((item) => item.id === batch.variantId)?.name,
+            count: batch.count,
+          })) : [],
+          materialTotals: stage === "bake" ? consolidateRows.map((row) => ({ name: row.name, amount: row.total, unit: row.unit })) : [],
+          bakeMode: stage === "bake" ? bakeMode : null,
+          handbook: stage === "bake" ? {
+            desserts: selectedHandbookIdeas.map((idea) => idea.title), style: handbookStylePrompt,
+            pageCount: handbookPageCount, generated: Boolean(handbookResult), stale: handbookIsStale,
+          } : null,
+        })}
+        onClose={() => setAgentOpen(false)}
+        onNavigate={openStage}
+      />
 
       {galleryOpen && <MasterpieceGallery language={language} onClose={closeGallery} />}
       {ideaEditor && (

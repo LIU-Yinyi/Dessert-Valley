@@ -32,6 +32,27 @@ on narrow screens. Click the backdrop or press Escape to close the gallery.
 Within either frame, scroll to zoom around the cursor, left-drag to pan, and
 double-click to reset. Keyboard controls support plus/minus, arrows, and 0/Home.
 
+**Ask Muse** is a bilingual AI adviser available throughout the workflow. It uses
+the current dessert brief, text references, materials, variants, making steps and
+(in Bake) batch quantities and calculated totals to answer follow-up questions.
+It offers stage-specific starter questions, source links and optional navigation
+to a suggested stage. It does not change workspace data. Audio attachments are
+transcribed to editable text before sending. Failed questions remain editable for
+retry; closing the panel preserves the conversation, refreshing clears it.
+
+The server-only `/api/muse` route uses the existing Sites `OPENAI_API_KEY` with
+the Responses API (`gpt-5.6-luna`, `store: false`). A bounded text snapshot and
+the five most recent exchanges accompany each question; images, audio assets,
+and the complete stored workspace are excluded. The versioned knowledge base in
+`app/api/muse/knowledge.ts` contains the actual app workflow plus reviewed,
+paraphrased references from King Arthur Baking, Callebaut and the FDA. The small
+collection is supplied in full on each request, including Chinese conversations;
+this avoids missing relevant guidance through keyword matching. It is a curated
+library, not live web search. Update its date/version and verify source links when
+changing app behavior or refreshing baking guidance. The API validates source IDs
+against this library and returns only its known links. It distinguishes sourced
+facts from proposed recipe experiments and does not promise unverified shelf life.
+
 ## Visual system
 
 The implementation follows [`DESIGN_STYLE.md`](./DESIGN_STYLE.md) without

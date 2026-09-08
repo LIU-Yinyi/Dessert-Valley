@@ -50,6 +50,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
     handbookRoute,
     workspaceStorage,
     handbookStorage,
+    museAdviser,
   ] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
@@ -61,6 +62,7 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
     readFile(new URL("../app/api/handbook-render/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/workspace-storage.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/handbook-storage.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/muse-adviser.tsx", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /type ReferenceKind = "text" \| "audio" \| "image" \| "canvas"/);
@@ -137,7 +139,8 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   assert.match(page, /切换到英文/);
   assert.doesNotMatch(page, /className="avatar"/);
   assert.match(page, /Empty dessert sketch canvas/);
-  assert.match(page, /className="agent-window"/);
+  assert.match(page, /<MuseAdviser/);
+  assert.match(museAdviser, /className="agent-window"/);
   assert.match(page, /data-global-assistant="true"/);
   assert.match(page, /aria-controls="pastry-agent-window"/);
   assert.doesNotMatch(
