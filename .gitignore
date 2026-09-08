@@ -29,6 +29,7 @@ next-env.d.ts
 .dev.vars
 .dev.vars.*
 !.dev.vars.example
+!.dev.vars.*.example
 
 # Intermediate agent, build, and export results
 /outputs/
@@ -60,6 +61,31 @@ yarn-error.log*
 *.secrets
 credentials.json
 service-account*.json
+.netrc
+.npmrc
+.ssh/
+/secrets/
+
+# Local user content, databases, and browser authentication state
+/uploads/
+/exports/
+/backups/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
+/playwright/.auth/
+/playwright/.cache/
+/blob-report/
+/.auth/
 
 # Keys, certificates, and signing material
 *.pem
