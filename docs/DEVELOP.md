@@ -1,4 +1,4 @@
-# Development & architecture
+# Developer guide
 
 For the visual tour and edition setup, see the [main README](../README.md).
 
@@ -58,7 +58,7 @@ facts from proposed recipe experiments and does not promise unverified shelf lif
 
 ## Visual system
 
-The implementation follows [`DESIGN_STYLE.md`](../DESIGN_STYLE.md) without
+The implementation follows [`DESIGN_STYLE.md`](DESIGN_STYLE.md) without
 copying any existing game. The original motif is a riverside pastry workshop
 beside a small orchard.
 
@@ -209,3 +209,18 @@ Before committing, inspect `git diff --cached` and `git ls-files -ci
 `gitleaks git --log-opts="--all --full-history -m" --redact=100`, and scan the
 staged source snapshot as well. If a real secret is found in history, stop the
 push, revoke or rotate it, and agree on a history-cleanup plan first.
+
+## Security & credentials
+
+Workspace content is stored in **IndexedDB**, with a `localStorage` fallback. Export important projects as JSON for a portable backup. AI actions send the relevant input to the configured provider; local storage does not mean every feature works offline.
+
+On `openai`, **`.openai/hosting.json` is a non-secret hosting manifest**. It currently contains a Sites project identifier and empty `d1` / `r2` bindings — no API key, password, or access token. The Sites build reads this file, so it stays tracked. It is absent from the `vps` branch. Keep credentials in runtime secrets or ignored local configuration, never in this manifest.
+
+On `vps`, the API base URL stays in `localStorage`, while the key stays in tab `sessionStorage` and is excluded from workspace exports. Browser storage does not hide a key from scripts running in that browser. OpenAI recommends keeping API keys on the server; this edition deliberately uses a personal bring-your-own-key connection. For a shared public service using an owner-funded key, choose the Sites edition with a server-side secret. See [OpenAI’s authentication guidance](https://developers.openai.com/api/reference/overview#authentication).
+
+The repository’s ignore rules exclude common secret files, local databases, uploads, exports, logs, and build output. Only sanitized `*.example` configuration templates belong in Git. Review staged changes before pushing; adding an ignore rule does not remove files already in history.
+
+
+## Validation
+
+Run `npm run lint` and `npm test` before publishing changes. `npm test` runs a production build and the Node tests without a real provider credential. For a narrower documentation/source-contract check after a build, use `node --test tests/rendered-html.test.mjs`.

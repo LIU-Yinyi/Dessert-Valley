@@ -13,7 +13,7 @@ references, create product renderings, develop scaled recipes and production
 plans, and prepare diner handbooks.
 
 The product has an original riverside-orchard atelier identity. Preserve the
-visual vocabulary in `DESIGN_STYLE.md`: parchment work surfaces, timber
+visual vocabulary in `docs/DESIGN_STYLE.md`: parchment work surfaces, timber
 framing, crisp pixel-like edges, countryside scenery, strong focus states, and
 practical form controls. Do not introduce glassmorphism, generic dashboard
 styling, or copied game assets.
