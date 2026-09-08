@@ -7,7 +7,10 @@ parchment work surfaces, crisp countryside scenery, and practical modern forms.
 
 ## Product flow
 
-1. **Idea** — capture a short dessert direction and optional reference image.
+1. **Idea** — type a dessert direction or transcribe recorded/uploaded audio into
+   editable text, and attach up to four reference images. Add to gallery uses AI
+   to polish the dessert name, description and tags and select an attached cover
+   image. Other attached images remain available in the Design Dock.
 2. **Design** — combine text, image, and empty-canvas references into one intent
    package, then generate exterior or cutaway product renderings. Use Audio to
    Text in a text reference to append a spoken design direction; existing audio

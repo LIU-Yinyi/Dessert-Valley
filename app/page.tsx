@@ -50,6 +50,14 @@ import {
   useState,
 } from "react";
 import { transcribeAudioToText } from "./audio-to-text";
+import IdeaAudioInput from "./idea-audio-input";
+import {
+  MAX_IDEA_IMAGES,
+  MAX_IDEA_TEXT_LENGTH,
+  normalizeIdeaAttachments,
+  structureIdea,
+  type IdeaAttachment,
+} from "./idea-input";
 import {
   ensureWorkspaceCookie,
   hasWorkspaceCookie,
@@ -144,6 +152,7 @@ type WorkspaceData = {
   ideaText: string;
   ideaImage: string;
   ideaImageName: string;
+  ideaImages?: IdeaAttachment[];
   referencePackages: Record<number, DesignReference[]>;
   viewStyle: ViewStyle;
   renderResults: Record<number, RenderResult | null>;
@@ -528,6 +537,7 @@ function createSeedWorkspaceData(): WorkspaceData {
     ideaText: "",
     ideaImage: "",
     ideaImageName: "",
+    ideaImages: [],
     referencePackages: Object.fromEntries(
       ideas.map((idea) => [idea.id, inheritedReferences(idea)])
     ),
@@ -747,6 +757,7 @@ function migrateWorkspaceData(
         );
   const migrated = {
     ...value,
+    ideaImages: normalizeIdeaAttachments(value.ideaImages, value.ideaImage, value.ideaImageName),
     productionRows,
     materialPrices: normalizeMaterialPrices(value.materialPrices),
     handbookPageCount:
@@ -2915,8 +2926,15 @@ export default function Home() {
   const [ideas, setIdeas] = useState<IdeaCard[]>(seedIdeas);
   const [selectedIdeaId, setSelectedIdeaId] = useState(1);
   const [ideaText, setIdeaText] = useState("");
-  const [ideaImage, setIdeaImage] = useState("");
-  const [ideaImageName, setIdeaImageName] = useState("");
+  const [ideaImages, setIdeaImages] = useState<IdeaAttachment[]>([]);
+  const ideaImage = ideaImages[0]?.src ?? "";
+  const ideaImageName = ideaImages[0]?.name ?? "";
+  const [ideaAudioBusy, setIdeaAudioBusy] = useState(false);
+  const [ideaImagesLoading, setIdeaImagesLoading] = useState(false);
+  const [structuringIdea, setStructuringIdea] = useState(false);
+  const [ideaError, setIdeaError] = useState("");
+  const ideaSubmitting = useRef(false);
+  const ideaImageInput = useRef<HTMLInputElement>(null);
   const [ideaEditor, setIdeaEditor] = useState<IdeaCard | null>(null);
   const [ideaToDelete, setIdeaToDelete] = useState<IdeaCard | null>(null);
   const [referencePackages, setReferencePackages] = useState<
@@ -3161,8 +3179,7 @@ export default function Home() {
         setIdeas(workspace.ideas);
         setSelectedIdeaId(activeIdeaId);
         setIdeaText(workspace.ideaText);
-        setIdeaImage(workspace.ideaImage);
-        setIdeaImageName(workspace.ideaImageName);
+        setIdeaImages(normalizeIdeaAttachments(workspace.ideaImages, workspace.ideaImage, workspace.ideaImageName));
         setReferencePackages(workspace.referencePackages);
         setViewStyle(workspace.viewStyle);
         setRenderResults(workspace.renderResults);
@@ -3203,6 +3220,7 @@ export default function Home() {
       ideaText,
       ideaImage,
       ideaImageName,
+      ideaImages,
       referencePackages,
       viewStyle,
       renderResults,
@@ -3242,6 +3260,7 @@ export default function Home() {
     handbookStylePrompt,
     ideaImage,
     ideaImageName,
+    ideaImages,
     ideas,
     ideaText,
     materialPrices,
@@ -3365,41 +3384,68 @@ export default function Home() {
   };
 
   const handleIdeaImage = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setIdeaImage(await readFileAsDataUrl(file));
-    setIdeaImageName(file.name);
+    const files = Array.from(event.target.files ?? []);
     event.target.value = "";
+    if (!files.length || structuringIdea || ideaImagesLoading) return;
+    if (files.length + ideaImages.length > MAX_IDEA_IMAGES) {
+      setIdeaError(tr(language, "Attach up to 4 images for this idea.", "每个创意最多可添加 4 张图片。"));
+      return;
+    }
+    setIdeaImagesLoading(true);
+    setIdeaError("");
+    try {
+      const images = await Promise.all(files.map(async (file) => {
+        if (!file.size || file.size > 8 * 1024 * 1024) throw new Error("invalid_image");
+        return { src: await normalizeReferenceImage(await readFileAsDataUrl(file)), name: file.name };
+      }));
+      setIdeaImages((current) => normalizeIdeaAttachments([...current, ...images]));
+    } catch {
+      setIdeaError(tr(language, "Choose readable images up to 8 MB each. Your existing images are kept.", "请选择每张不超过 8 MB 的有效图片，已有图片会保留。"));
+    } finally {
+      setIdeaImagesLoading(false);
+    }
   };
 
-  const addIdea = () => {
-    if (!ideaText.trim()) return;
-    const words = ideaText
-      .trim()
-      .replace(/[^\p{L}\p{N}\s-]/gu, "")
-      .split(/\s+/)
-      .slice(0, 4);
-    const idea: IdeaCard = {
-      id: uid(),
-      title: words.join(" ") || tr(language, "Untitled Dessert", "未命名甜点"),
-      prompt: ideaText.trim(),
-      image: ideaImage,
-      imageName: ideaImageName,
-      tags: ["new", "ready"],
-    };
-    setIdeas((current) => [idea, ...current]);
-    setReferencePackages((current) => ({
-      ...current,
-      [idea.id]: inheritedReferences(idea),
-    }));
-    setProductDrafts((current) => ({
-      ...current,
-      [idea.id]: emptyProductDraft(),
-    }));
-    setIdeaText("");
-    setIdeaImage("");
-    setIdeaImageName("");
-    notify(tr(language, "Idea added to the gallery", "创意已添加到画廊"));
+  const addIdea = async () => {
+    if (ideaSubmitting.current || ideaAudioBusy || ideaImagesLoading || (!ideaText.trim() && !ideaImages.length)) return;
+    if (ideaText.length > MAX_IDEA_TEXT_LENGTH) {
+      setIdeaError(tr(language, "Shorten the idea to 16,000 characters before adding it.", "请将创意文字缩短至 16,000 字符以内。"));
+      return;
+    }
+    ideaSubmitting.current = true;
+    setStructuringIdea(true);
+    setIdeaError("");
+    const imagesSnapshot = [...ideaImages];
+    const languageSnapshot = language;
+    try {
+      const fields = await structureIdea({ text: ideaText.trim(), language: languageSnapshot, images: imagesSnapshot });
+      const idea: IdeaCard = { id: uid(), ...fields };
+      const extraReferences: DesignReference[] = imagesSnapshot
+        .filter((image) => image.src !== idea.image)
+        .map((image) => ({ id: uid(), kind: "image", title: image.name || "Idea reference", content: "", asset: image.src }));
+      setIdeas((current) => [idea, ...current]);
+      setSelectedIdeaId(idea.id);
+      setReferencePackages((current) => ({
+        ...current,
+        [idea.id]: [...inheritedReferences(idea), ...extraReferences],
+      }));
+      setProductDrafts((current) => ({ ...current, [idea.id]: emptyProductDraft() }));
+      setIdeaText("");
+      setIdeaImages([]);
+      notify(tr(languageSnapshot, "Idea polished and added to the gallery", "创意已整理润色并添加到画廊"));
+    } catch (caught) {
+      const code = caught instanceof Error ? caught.message : "idea_failed";
+      setIdeaError(code === "not_configured"
+        ? tr(languageSnapshot, "Idea polishing is not configured yet. Your draft is kept.", "创意整理功能尚未配置，草稿已保留。")
+        : code === "rate_limit"
+          ? tr(languageSnapshot, "The idea editor is busy. Your draft is kept; try again shortly.", "创意编辑助手正忙，草稿已保留，请稍后重试。")
+          : code === "idea_blocked"
+            ? tr(languageSnapshot, "This idea could not be processed. Revise the text or images and try again.", "暂时无法处理此创意，请调整文字或图片后重试。")
+            : tr(languageSnapshot, "Could not polish this idea. Your text and images are kept; try again.", "创意整理失败，文字与图片已保留，请重试。"));
+    } finally {
+      ideaSubmitting.current = false;
+      setStructuringIdea(false);
+    }
   };
 
   const saveIdea = (updatedIdea: IdeaCard) => {
@@ -4475,41 +4521,57 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="idea-composer pixel-panel">
+            <div className="idea-composer pixel-panel" aria-busy={structuringIdea}>
               <textarea
                 value={ideaText}
-                onChange={(event) => setIdeaText(event.target.value)}
+                onChange={(event) => { setIdeaText(event.target.value); setIdeaError(""); }}
+                disabled={!workspaceHydrated || structuringIdea}
+                maxLength={MAX_IDEA_TEXT_LENGTH}
                 placeholder={tr(
                   language,
                   "A tiny chestnut tart with maple cream and a little acorn lid…",
                   "一款迷你栗子挞，配枫糖奶油和小橡果造型顶盖……"
                 )}
                 aria-label={tr(language, "Dessert idea", "甜点创意")}
+                aria-describedby="idea-composer-help"
               />
+              <p id="idea-composer-help" className="idea-composer-help">
+                {tr(language, "Type or transcribe an idea. AI will polish its name, description and tags, and choose a cover from your images.", "输入文字或将语音转成文字。AI 会整理甜点名称、描述与标签，并从所附图片中选择封面。")}
+              </p>
+              {ideaImages.length > 0 && <div className="idea-image-attachments" aria-label={tr(language, "Attached idea images", "创意附图")}>
+                {ideaImages.map((image, index) => <div className="idea-image-attachment" key={image.src}>
+                  <WorkspaceImage src={image.src} alt={image.name || tr(language, "Idea reference", "创意参考")} />
+                  <span>{image.name}</span>
+                  <button className="square-button" type="button" disabled={!workspaceHydrated || structuringIdea || ideaImagesLoading}
+                    onClick={() => setIdeaImages((current) => current.filter((_image, position) => position !== index))}
+                    aria-label={tr(language, `Remove image ${index + 1}`, `移除第 ${index + 1} 张图片`)}><X size={16} /></button>
+                </div>)}
+              </div>}
               <div className="composer-footer">
                 <div className="composer-assets">
-                  <label className={cn("tool-chip", ideaImage && "active")}>
-                    <ImagePlus size={15} />
-                    {ideaImageName || tr(language, "Add image", "添加图片")}
-                    <input type="file" accept="image/*" onChange={handleIdeaImage} />
-                  </label>
-                  {ideaImage && (
-                    <button
-                      className="square-button mini"
-                      type="button"
-                      onClick={() => {
-                        setIdeaImage("");
-                        setIdeaImageName("");
-                      }}
-                      aria-label={tr(language, "Remove idea image", "移除创意图片")}
-                    >
-                      <X size={13} />
-                    </button>
-                  )}
+                  <button className="tool-chip" type="button" onClick={() => ideaImageInput.current?.click()}
+                    disabled={!workspaceHydrated || structuringIdea || ideaImagesLoading || ideaImages.length >= MAX_IDEA_IMAGES}>
+                    {ideaImagesLoading ? <LoaderCircle className="spin" size={15} /> : <ImagePlus size={15} />}
+                    {tr(language, "Add image", "添加图片")}
+                  </button>
+                  <input ref={ideaImageInput} type="file" accept="image/*" multiple hidden onChange={handleIdeaImage}
+                    disabled={!workspaceHydrated || structuringIdea || ideaImagesLoading || ideaImages.length >= MAX_IDEA_IMAGES} />
+                  <IdeaAudioInput language={language} disabled={!workspaceHydrated || structuringIdea || ideaImagesLoading}
+                    onBusyChange={setIdeaAudioBusy}
+                    onTranscript={(text) => {
+                      setIdeaText((current) => current.trimEnd() ? `${current.trimEnd()}\n${text}` : text);
+                      setIdeaError("");
+                    }} />
                 </div>
-                <button className="button primary" type="button" onClick={addIdea} disabled={!ideaText.trim()}>
-                  <Plus size={15} /> {tr(language, "Add to gallery", "添加到画廊")}
+                <button className="button primary" type="button" onClick={addIdea}
+                  disabled={!workspaceHydrated || structuringIdea || ideaAudioBusy || ideaImagesLoading || (!ideaText.trim() && !ideaImages.length)}>
+                  {structuringIdea ? <LoaderCircle className="spin" size={15} /> : <Plus size={15} />}
+                  {structuringIdea ? tr(language, "Polishing idea…", "正在整理创意……") : tr(language, "Add to gallery", "添加到画廊")}
                 </button>
+              </div>
+              <div aria-live="polite">
+                {structuringIdea && <p className="idea-composer-help">{tr(language, "Preparing your dessert name, description, tags and cover…", "正在整理甜点名称、描述、标签与封面……")}</p>}
+                {ideaError && <p className="field-error" role="alert">{ideaError}</p>}
               </div>
             </div>
 
