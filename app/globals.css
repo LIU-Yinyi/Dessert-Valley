@@ -721,8 +721,7 @@ input[type="file"] {
   border-color: var(--leaf);
 }
 
-.idea-composer .composer-assets,
-.idea-audio-actions {
+.idea-composer .composer-assets {
   display: flex;
   align-items: flex-start;
   flex-wrap: wrap;
@@ -742,26 +741,40 @@ input[type="file"] {
   flex-shrink: 0;
 }
 
-.idea-composer-help,
-.idea-audio-feedback p {
-  margin: 10px 0 0;
-  color: var(--ink-soft);
-  font-size: 14px;
-  line-height: 1.5;
+.idea-composer .thinking:disabled {
+  opacity: 1;
+  cursor: wait;
 }
 
 .idea-audio-input {
   min-width: 0;
-  flex: 1;
+  flex: 0 0 auto;
 }
 
-.idea-audio-feedback [role="alert"] {
-  color: var(--berry);
+.idea-audio-input > .tool-chip {
+  min-width: 128px;
+  justify-content: center;
 }
 
-.idea-audio-actions .recording {
+.idea-audio-input .recording {
   color: white;
   background: var(--berry);
+}
+
+.recording-level-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 18px;
+  height: 18px;
+}
+
+.recording-level-icon > span {
+  width: 2px;
+  min-height: 3px;
+  background: currentColor;
+  border-radius: 1px;
 }
 
 .idea-image-attachments {

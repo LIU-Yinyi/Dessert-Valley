@@ -2932,7 +2932,6 @@ export default function Home() {
   const [ideaAudioBusy, setIdeaAudioBusy] = useState(false);
   const [ideaImagesLoading, setIdeaImagesLoading] = useState(false);
   const [structuringIdea, setStructuringIdea] = useState(false);
-  const [ideaError, setIdeaError] = useState("");
   const ideaSubmitting = useRef(false);
   const ideaImageInput = useRef<HTMLInputElement>(null);
   const [ideaEditor, setIdeaEditor] = useState<IdeaCard | null>(null);
@@ -3388,11 +3387,10 @@ export default function Home() {
     event.target.value = "";
     if (!files.length || structuringIdea || ideaImagesLoading) return;
     if (files.length + ideaImages.length > MAX_IDEA_IMAGES) {
-      setIdeaError(tr(language, "Attach up to 4 images for this idea.", "每个创意最多可添加 4 张图片。"));
+      notify(tr(language, "Attach up to 4 images for this idea.", "每个创意最多可添加 4 张图片。"));
       return;
     }
     setIdeaImagesLoading(true);
-    setIdeaError("");
     try {
       const images = await Promise.all(files.map(async (file) => {
         if (!file.size || file.size > 8 * 1024 * 1024) throw new Error("invalid_image");
@@ -3400,7 +3398,7 @@ export default function Home() {
       }));
       setIdeaImages((current) => normalizeIdeaAttachments([...current, ...images]));
     } catch {
-      setIdeaError(tr(language, "Choose readable images up to 8 MB each. Your existing images are kept.", "请选择每张不超过 8 MB 的有效图片，已有图片会保留。"));
+      notify(tr(language, "Choose readable images up to 8 MB each. Your existing images are kept.", "请选择每张不超过 8 MB 的有效图片，已有图片会保留。"));
     } finally {
       setIdeaImagesLoading(false);
     }
@@ -3409,12 +3407,11 @@ export default function Home() {
   const addIdea = async () => {
     if (ideaSubmitting.current || ideaAudioBusy || ideaImagesLoading || (!ideaText.trim() && !ideaImages.length)) return;
     if (ideaText.length > MAX_IDEA_TEXT_LENGTH) {
-      setIdeaError(tr(language, "Shorten the idea to 16,000 characters before adding it.", "请将创意文字缩短至 16,000 字符以内。"));
+      notify(tr(language, "Shorten the idea to 16,000 characters before adding it.", "请将创意文字缩短至 16,000 字符以内。"));
       return;
     }
     ideaSubmitting.current = true;
     setStructuringIdea(true);
-    setIdeaError("");
     const imagesSnapshot = [...ideaImages];
     const languageSnapshot = language;
     try {
@@ -3435,7 +3432,7 @@ export default function Home() {
       notify(tr(languageSnapshot, "Idea polished and added to the gallery", "创意已整理润色并添加到画廊"));
     } catch (caught) {
       const code = caught instanceof Error ? caught.message : "idea_failed";
-      setIdeaError(code === "not_configured"
+      notify(code === "not_configured"
         ? tr(languageSnapshot, "Idea polishing is not configured yet. Your draft is kept.", "创意整理功能尚未配置，草稿已保留。")
         : code === "rate_limit"
           ? tr(languageSnapshot, "The idea editor is busy. Your draft is kept; try again shortly.", "创意编辑助手正忙，草稿已保留，请稍后重试。")
@@ -4524,7 +4521,7 @@ export default function Home() {
             <div className="idea-composer pixel-panel" aria-busy={structuringIdea}>
               <textarea
                 value={ideaText}
-                onChange={(event) => { setIdeaText(event.target.value); setIdeaError(""); }}
+                onChange={(event) => setIdeaText(event.target.value)}
                 disabled={!workspaceHydrated || structuringIdea}
                 maxLength={MAX_IDEA_TEXT_LENGTH}
                 placeholder={tr(
@@ -4533,11 +4530,7 @@ export default function Home() {
                   "一款迷你栗子挞，配枫糖奶油和小橡果造型顶盖……"
                 )}
                 aria-label={tr(language, "Dessert idea", "甜点创意")}
-                aria-describedby="idea-composer-help"
               />
-              <p id="idea-composer-help" className="idea-composer-help">
-                {tr(language, "Type or transcribe an idea. AI will polish its name, description and tags, and choose a cover from your images.", "输入文字或将语音转成文字。AI 会整理甜点名称、描述与标签，并从所附图片中选择封面。")}
-              </p>
               {ideaImages.length > 0 && <div className="idea-image-attachments" aria-label={tr(language, "Attached idea images", "创意附图")}>
                 {ideaImages.map((image, index) => <div className="idea-image-attachment" key={image.src}>
                   <WorkspaceImage src={image.src} alt={image.name || tr(language, "Idea reference", "创意参考")} />
@@ -4558,20 +4551,16 @@ export default function Home() {
                     disabled={!workspaceHydrated || structuringIdea || ideaImagesLoading || ideaImages.length >= MAX_IDEA_IMAGES} />
                   <IdeaAudioInput language={language} disabled={!workspaceHydrated || structuringIdea || ideaImagesLoading}
                     onBusyChange={setIdeaAudioBusy}
+                    onError={notify}
                     onTranscript={(text) => {
                       setIdeaText((current) => current.trimEnd() ? `${current.trimEnd()}\n${text}` : text);
-                      setIdeaError("");
                     }} />
                 </div>
-                <button className="button primary" type="button" onClick={addIdea}
+                <button className={cn("button primary", structuringIdea && "thinking")} type="button" onClick={addIdea}
                   disabled={!workspaceHydrated || structuringIdea || ideaAudioBusy || ideaImagesLoading || (!ideaText.trim() && !ideaImages.length)}>
                   {structuringIdea ? <LoaderCircle className="spin" size={15} /> : <Plus size={15} />}
-                  {structuringIdea ? tr(language, "Polishing idea…", "正在整理创意……") : tr(language, "Add to gallery", "添加到画廊")}
+                  <span aria-live="polite" aria-atomic="true">{structuringIdea ? tr(language, "Muse Thinking", "缪斯思考中") : tr(language, "Add to gallery", "添加到画廊")}</span>
                 </button>
-              </div>
-              <div aria-live="polite">
-                {structuringIdea && <p className="idea-composer-help">{tr(language, "Preparing your dessert name, description, tags and cover…", "正在整理甜点名称、描述、标签与封面……")}</p>}
-                {ideaError && <p className="field-error" role="alert">{ideaError}</p>}
               </div>
             </div>
 

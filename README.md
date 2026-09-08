@@ -7,7 +7,7 @@ parchment work surfaces, crisp countryside scenery, and practical modern forms.
 
 ## Product flow
 
-1. **Idea** — type a dessert direction or transcribe recorded/uploaded audio into
+1. **Idea** — type a dessert direction or transcribe a voice recording into
    editable text, and attach up to four reference images. Add to gallery uses AI
    to polish the dessert name, description and tags and select an attached cover
    image. Other attached images remain available in the Design Dock.
