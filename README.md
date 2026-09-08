@@ -46,7 +46,7 @@ Include the API version path (usually `/v1`). Your provider must support **Respo
 
 ### 🖼️ The workflow at a glance
 
-<table>
+<table align="center">
   <tr>
     <td width="50%"><strong>🌱 01 · Idea — gather</strong><p>Collect a direction and browse your dessert garden.</p><a href="docs/readme/stage-idea.png"><img src="docs/readme/stage-idea.png" alt="Idea gallery with jasmine, strawberry and pistachio dessert concept cards"></a></td>
     <td width="50%"><strong>🎨 02 · Design — shape</strong><p>Bring references together and explore a product rendering.</p><a href="docs/readme/stage-design.png"><img src="docs/readme/stage-design.png" alt="Design Dock with a text brief, reference image and moonlit jasmine dessert rendering"></a></td>
@@ -63,7 +63,7 @@ Include the API version path (usually `/v1`). Your provider must support **Respo
 
 A glossy **Yogurt Tanghulu · 酸奶苹果糖葫芦** becomes the star of a warm, illustrated dessert menu. These two examples were supplied by **Oli** — the design on the left, the finished menu on the right. Thank you, Oli! 💛
 
-<table>
+<table align="center">
   <tr>
     <td align="center" width="50%"><strong>🎨 The dessert design</strong></td>
     <td align="center" width="50%"><strong>📜 The dessert menu</strong></td>
@@ -88,11 +88,16 @@ You can also explore these examples in the app’s **🖼️ Masterpiece gallery
 
 Both branches share the same dessert workflow, bilingual interface, Muse, gallery, and notebook tools.
 
-| | ☁️ OpenAI Sites · `openai` | 🏡 Self-hosted · `vps` |
-| :-- | :-- | :-- |
-| **Where it runs** | OpenAI Sites | Your VPS or another static host |
-| **Who supplies the key** | The site owner binds it as a server secret | Each user enters a compatible API connection |
-| **What visitors do** | Open the site and start creating | Click **🔑 at the top-left**, save the connection, then start creating |
+<table align="center">
+  <thead>
+    <tr><th></th><th>☁️ OpenAI Sites · <code>openai</code></th><th>🏡 Self-hosted · <code>vps</code></th></tr>
+  </thead>
+  <tbody>
+    <tr><th>Where it runs</th><td>OpenAI Sites</td><td>Your VPS or another static host</td></tr>
+    <tr><th>Who supplies the key</th><td>The site owner binds it as a server secret</td><td>Each user enters a compatible API connection</td></tr>
+    <tr><th>What visitors do</th><td>Open the site and start creating</td><td>Click <strong>🔑 at the top-left</strong>, save the connection, then start creating</td></tr>
+  </tbody>
+</table>
 
 ## 🌾 Docs & credits
 
