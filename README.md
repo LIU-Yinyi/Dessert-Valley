@@ -8,8 +8,10 @@ parchment work surfaces, crisp countryside scenery, and practical modern forms.
 ## Product flow
 
 1. **Idea** — capture a short dessert direction and optional reference image.
-2. **Design** — combine text, audio, image, and empty-canvas references into one
-   intent package, then generate exterior or cutaway product renderings.
+2. **Design** — combine text, image, and empty-canvas references into one intent
+   package, then generate exterior or cutaway product renderings. Use Audio to
+   Text in a text reference to append a spoken design direction; existing audio
+   reference cards remain editable.
 3. **Product** — switch between active designs, configure optional size
    variants with automatically scaled materials, and add illustrated making
    steps.

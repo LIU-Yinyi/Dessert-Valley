@@ -19,7 +19,7 @@ type HandbookRequest = {
 };
 
 type OpenAIImageResponse = {
-  data?: Array<{ b64_json?: string }>;
+  data?: Array<{ b64_json?: string; url?: string }>;
   error?: {
     code?: string;
     message?: string;
@@ -391,8 +391,13 @@ async function requestHandbookPage(
     );
   }
 
-  const base64Image = result.data?.[0]?.b64_json;
-  if (!base64Image) {
+  const item = result.data?.[0];
+  const image = typeof item?.b64_json === "string" && item.b64_json
+    ? `data:image/jpeg;base64,${item.b64_json}`
+    : typeof item?.url === "string" && /^(https?:\/\/|data:image\/)/i.test(item.url)
+      ? item.url
+      : null;
+  if (!image) {
     throw new HandbookGenerationError(
       502,
       "empty_generation",
@@ -402,7 +407,7 @@ async function requestHandbookPage(
   }
 
   return {
-    image: `data:image/jpeg;base64,${base64Image}`,
+    image,
     requestId,
   };
 }

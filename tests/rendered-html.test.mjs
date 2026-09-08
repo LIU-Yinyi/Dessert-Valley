@@ -64,6 +64,11 @@ test("keeps the simplified multimodal workflow and responsive contracts", async 
   ]);
 
   assert.match(page, /type ReferenceKind = "text" \| "audio" \| "image" \| "canvas"/);
+  assert.match(page, /const addableReferenceKinds = \[\s*"text",\s*"image",\s*"canvas",\s*\]/);
+  assert.match(page, /addableReferenceKinds\.map/);
+  assert.match(page, /transcribeAudioToText\(/);
+  assert.match(page, /Audio to Text/);
+  assert.match(page, /语音转文字/);
   assert.match(page, /inheritedReferences\(idea\)/);
   assert.match(page, /fetch\("\/api\/render"/);
   assert.match(page, /normalizeReferenceImage/);

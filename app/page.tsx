@@ -49,6 +49,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { transcribeAudioToText } from "./audio-to-text";
 import {
   ensureWorkspaceCookie,
   hasWorkspaceCookie,
@@ -291,6 +292,12 @@ const referenceMeta: Record<
   image: { label: "Image", helper: "Add a photo, collage or visual sample", icon: ImagePlus },
   canvas: { label: "Canvas", helper: "Draw a fresh sketch on an empty canvas", icon: Pencil },
 };
+
+const addableReferenceKinds = [
+  "text",
+  "image",
+  "canvas",
+] as const satisfies readonly ReferenceKind[];
 
 const stageCopy: Record<
   Language,
@@ -1244,51 +1251,173 @@ function ReferenceEditor({
   const [content, setContent] = useState(existing?.content ?? "");
   const [asset, setAsset] = useState(existing?.asset ?? "");
   const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [audioError, setAudioError] = useState("");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const recordingFailedRef = useRef(false);
+  const editorMountedRef = useRef(true);
   const dialogRef = useDialogFocus(onClose);
 
-  useEffect(
-    () => () => {
-      recorderRef.current?.stop();
+  useEffect(() => {
+    editorMountedRef.current = true;
+    return () => {
+      editorMountedRef.current = false;
+      recordingFailedRef.current = true;
+      const recorder = recorderRef.current;
+      if (recorder) {
+        recorder.ondataavailable = null;
+        recorder.onstop = null;
+        recorder.onerror = null;
+        if (recorder.state !== "inactive") recorder.stop();
+      }
       streamRef.current?.getTracks().forEach((track) => track.stop());
-    },
-    []
-  );
+      streamRef.current = null;
+      recorderRef.current = null;
+    };
+  }, []);
 
   const toggleRecording = async () => {
     if (recording) {
-      recorderRef.current?.stop();
-      setRecording(false);
+      const recorder = recorderRef.current;
+      if (recorder && recorder.state !== "inactive") recorder.stop();
       return;
     }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      chunksRef.current = [];
-      const recorder = new MediaRecorder(stream);
-      recorderRef.current = recorder;
-      recorder.ondataavailable = (event) => {
-        if (event.data.size) chunksRef.current.push(event.data);
-      };
-      recorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, {
-          type: recorder.mimeType || "audio/webm",
-        });
-        setAsset(await readFileAsDataUrl(new File([blob], "voice-note.webm")));
-        stream.getTracks().forEach((track) => track.stop());
-      };
-      recorder.start();
-      setAudioError("");
-      setRecording(true);
-    } catch {
+    if (transcribing) return;
+    if (
+      typeof MediaRecorder === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
       setAudioError(
         tr(
           language,
-          "Microphone unavailable. You can upload an audio clip instead.",
-          "麦克风不可用，可改为上传音频文件。"
+          kind === "text"
+            ? "Audio recording is not supported in this browser."
+            : "Audio recording is not supported in this browser. Choose an audio file instead.",
+          kind === "text"
+            ? "此浏览器不支持音频录制。"
+            : "此浏览器不支持音频录制，请改为选择音频文件。"
+        )
+      );
+      return;
+    }
+
+    setAudioError("");
+    recordingFailedRef.current = false;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+      if (!editorMountedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      const requestedMimeType = preferredRecordingMimeType();
+      streamRef.current = stream;
+      const recorder = requestedMimeType
+        ? new MediaRecorder(stream, { mimeType: requestedMimeType })
+        : new MediaRecorder(stream);
+      chunksRef.current = [];
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        recordingFailedRef.current = true;
+        stream.getTracks().forEach((track) => track.stop());
+        if (!editorMountedRef.current) return;
+        setRecording(false);
+        setAudioError(
+          tr(
+            language,
+            "Recording stopped unexpectedly. Please try again.",
+            "录音意外停止，请重试。"
+          )
+        );
+      };
+      recorder.onstop = async () => {
+        const recordedMimeType = baseRecordingMimeType(
+          recorder.mimeType || requestedMimeType
+        );
+        const blob = new Blob(chunksRef.current, {
+          type: recordedMimeType,
+        });
+        stream.getTracks().forEach((track) => track.stop());
+        if (streamRef.current === stream) streamRef.current = null;
+        if (recorderRef.current === recorder) recorderRef.current = null;
+        if (!editorMountedRef.current) return;
+        setRecording(false);
+        if (recordingFailedRef.current) return;
+        if (blob.size === 0) {
+          setAudioError(
+            tr(
+              language,
+              "No audio was captured. Check your microphone and record again.",
+              "没有录制到音频，请检查麦克风后重试。"
+            )
+          );
+          return;
+        }
+
+        const file = new File(
+          [blob],
+          recordingFilename(recordedMimeType),
+          { type: recordedMimeType }
+        );
+        if (kind === "text") setTranscribing(true);
+        try {
+          const dataUrl = await readFileAsDataUrl(file);
+          if (!editorMountedRef.current) return;
+          if (kind === "audio") {
+            setAsset(dataUrl);
+            return;
+          }
+
+          const transcript = await transcribeAudioToText({
+            content: dataUrl,
+            filename: file.name,
+            mimeType: recordedMimeType,
+          });
+          if (!editorMountedRef.current) return;
+          setContent((current) => {
+            const draft = current.trimEnd();
+            return draft ? `${draft}\n${transcript}` : transcript;
+          });
+          setAudioError("");
+        } catch (caughtError) {
+          if (!editorMountedRef.current) return;
+          const code =
+            caughtError instanceof Error
+              ? caughtError.message
+              : "transcription_failed";
+          setAudioError(audioTranscriptionError(language, code));
+        } finally {
+          if (editorMountedRef.current) setTranscribing(false);
+        }
+      };
+      recorder.start(250);
+      setRecording(true);
+    } catch {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      recorderRef.current = null;
+      if (!editorMountedRef.current) return;
+      setRecording(false);
+      setAudioError(
+        tr(
+          language,
+          kind === "text"
+            ? "Microphone access was not granted. Allow access and try again."
+            : "Microphone access was not granted. Allow access or upload an audio clip instead.",
+          kind === "text"
+            ? "未获得麦克风权限，请允许访问后重试。"
+            : "未获得麦克风权限，请允许访问或改为上传音频文件。"
         )
       );
     }
@@ -1327,6 +1456,7 @@ function ReferenceEditor({
         role="dialog"
         aria-modal="true"
         aria-labelledby="reference-dialog-title"
+        aria-busy={transcribing}
       >
         <header className="modal-header">
           <div className="modal-icon"><meta.icon size={18} /></div>
@@ -1355,9 +1485,37 @@ function ReferenceEditor({
           </label>
 
           {kind === "text" && (
-            <label className="field">
-              <span>{tr(language, "Design direction", "设计方向")}</span>
+            <div className="field design-direction-field">
+              <div className="design-direction-heading">
+                <label htmlFor="reference-design-direction">
+                  {tr(language, "Design direction", "设计方向")}
+                </label>
+                <button
+                  className={cn(
+                    "audio-to-text-button",
+                    recording && "recording"
+                  )}
+                  type="button"
+                  onClick={toggleRecording}
+                  disabled={transcribing}
+                  aria-pressed={recording}
+                >
+                  {transcribing ? (
+                    <LoaderCircle className="spin" size={16} />
+                  ) : recording ? (
+                    <Square size={15} fill="currentColor" />
+                  ) : (
+                    <Mic size={16} />
+                  )}
+                  {transcribing
+                    ? tr(language, "Transcribing…", "正在转成文字……")
+                    : recording
+                      ? tr(language, "Stop & transcribe", "停止并转成文字")
+                      : tr(language, "Audio to Text", "语音转文字")}
+                </button>
+              </div>
               <textarea
+                id="reference-design-direction"
                 rows={7}
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
@@ -1368,7 +1526,36 @@ function ReferenceEditor({
                 )}
                 autoFocus
               />
-            </label>
+              <div
+                className="audio-to-text-feedback"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {recording && (
+                  <p className="recording-status">
+                    {tr(
+                      language,
+                      "Recording… Select “Stop & transcribe” when you finish.",
+                      "正在录音……结束时请选择“停止并转成文字”。"
+                    )}
+                  </p>
+                )}
+                {transcribing && (
+                  <p className="transcribing-status">
+                    {tr(
+                      language,
+                      "Transcribing your recording…",
+                      "正在将录音转成文字……"
+                    )}
+                  </p>
+                )}
+                {audioError && (
+                  <p className="field-error" role="alert">
+                    {audioError}
+                  </p>
+                )}
+              </div>
+            </div>
           )}
 
           {kind === "image" && (
@@ -1410,6 +1597,8 @@ function ReferenceEditor({
                 className={cn("record-button", recording && "recording")}
                 type="button"
                 onClick={toggleRecording}
+                disabled={transcribing}
+                aria-pressed={recording}
               >
                 <Mic size={18} />
                 {recording
@@ -1456,7 +1645,11 @@ function ReferenceEditor({
             className="button primary"
             type="button"
             onClick={confirm}
-            disabled={kind === "text" ? !content.trim() : kind !== "audio" && !asset}
+            disabled={
+              recording ||
+              transcribing ||
+              (kind === "text" ? !content.trim() : kind !== "audio" && !asset)
+            }
           >
             <Check size={15} /> {tr(language, "Confirm reference", "确认参考")}
           </button>
@@ -1583,6 +1776,49 @@ function StepEditor({
         </footer>
       </section>
     </div>
+  );
+}
+
+function audioTranscriptionError(language: Language, code?: string) {
+  if (code === "invalid_request") {
+    return tr(
+      language,
+      "The recording was empty, unsupported, or larger than 18 MB. Record a shorter direction and try again.",
+      "录音为空、格式不受支持或超过 18 MB，请缩短录音后重试。"
+    );
+  }
+  if (code === "not_configured") {
+    return tr(
+      language,
+      "Audio transcription is not configured yet.",
+      "语音转文字功能尚未配置。"
+    );
+  }
+  if (code === "rate_limit") {
+    return tr(
+      language,
+      "The transcription model is busy. Please try again shortly.",
+      "转写模型正忙，请稍后重试。"
+    );
+  }
+  if (code === "empty_transcription") {
+    return tr(
+      language,
+      "No speech was recognized. Record again in a quieter place.",
+      "没有识别到语音，请在更安静的环境中重新录制。"
+    );
+  }
+  if (code === "transcription_blocked") {
+    return tr(
+      language,
+      "This recording could not be transcribed.",
+      "无法转写这段录音。"
+    );
+  }
+  return tr(
+    language,
+    "The recording could not be transcribed. Please try again.",
+    "录音暂时无法转成文字，请重试。"
   );
 }
 
@@ -3956,11 +4192,12 @@ export default function Home() {
         ? payload.images.filter(
             (image): image is string =>
               typeof image === "string" &&
-              image.startsWith("data:image/")
+              (image.startsWith("data:image/") || /^https?:\/\//i.test(image))
           )
         : [];
       if (
         !response.ok ||
+        !payload ||
         pages.length !== pageCountSnapshot
       ) {
         throw new Error(payload?.error?.code || "generation_failed");
@@ -4467,7 +4704,7 @@ export default function Home() {
                     </button>
                     {dockOpen && (
                       <div className="dock-menu" role="menu">
-                        {(Object.keys(referenceMeta) as ReferenceKind[]).map((kind) => {
+                        {addableReferenceKinds.map((kind) => {
                           const meta = referenceMeta[kind];
                           const metaCopy = referenceCopy[language][kind];
                           const Icon = meta.icon;

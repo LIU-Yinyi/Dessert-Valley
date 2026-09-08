@@ -19,7 +19,7 @@ type RenderRequest = {
 };
 
 type OpenAIImageResponse = {
-  data?: Array<{ b64_json?: string }>;
+  data?: Array<{ b64_json?: string; url?: string }>;
   error?: {
     code?: string;
     message?: string;
@@ -346,8 +346,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const base64Image = result.data?.[0]?.b64_json;
-  if (!base64Image) {
+  const item = result.data?.[0];
+  const image = typeof item?.b64_json === "string" && item.b64_json
+    ? `data:image/jpeg;base64,${item.b64_json}`
+    : typeof item?.url === "string" && /^(https?:\/\/|data:image\/)/i.test(item.url)
+      ? item.url
+      : null;
+  if (!image) {
     return json(
       {
         error: {
@@ -361,7 +366,7 @@ export async function POST(request: Request) {
   }
 
   return json({
-    image: `data:image/jpeg;base64,${base64Image}`,
+    image,
     model: "gpt-image-2",
     inputCount: renderRequest.references.length,
     visualInputCount: visualReferences.length,

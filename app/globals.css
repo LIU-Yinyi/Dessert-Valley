@@ -1751,6 +1751,64 @@ input[type="file"] {
   background: var(--cream);
 }
 
+.design-direction-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.design-direction-heading > label {
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.audio-to-text-button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  color: var(--leaf-deep);
+  background: var(--leaf-soft);
+  border: 2px solid var(--leaf-deep);
+  box-shadow: var(--shadow-small);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.audio-to-text-button.recording {
+  color: white;
+  background: var(--berry);
+  border-color: #7f3835;
+}
+
+.audio-to-text-feedback:empty {
+  display: none;
+}
+
+.audio-to-text-feedback p {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.recording-status {
+  color: var(--berry);
+  font-weight: 800;
+}
+
+.transcribing-status {
+  color: var(--leaf-deep);
+}
+
 .audio-editor {
   display: grid;
   place-items: center;
@@ -4213,6 +4271,15 @@ button.empty-state {
 
   .pixel-modal {
     max-height: calc(100dvh - 16px);
+  }
+
+  .design-direction-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .audio-to-text-button {
+    width: 100%;
   }
 
   .modal-footer .button {
